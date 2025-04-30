@@ -37,7 +37,8 @@ test:
     - conda_declarative.edit
     - conda_declarative.cli
   commands:
-    - conda declarative --help
+    - conda edit --help
+    - conda apply --help
 
 about:
   home: https://github.com/conda-incubator/conda-declarative
