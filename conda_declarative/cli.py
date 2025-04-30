@@ -30,6 +30,11 @@ def configure_parser_edit(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Run 'conda apply' immediately after a successful edition.",
     )
+    parser.add_argument(
+        "--app",
+        action="store_true",
+        help="Use the builtin TUI to edit the environment",
+    )
 
 
 def execute_edit(args: argparse.Namespace) -> int:
@@ -46,6 +51,13 @@ def execute_edit(args: argparse.Namespace) -> int:
         old = manifest_path.read_text()
     else:
         _, old = update_manifest(prefix)
+
+    if args.app:
+        from .tui import CondaEnvEditorApp
+
+        app = CondaEnvEditorApp(file_path=manifest_path, env_prefix=prefix)
+        app.run()
+        return 0
 
     if not context.quiet:
         print("Opening editor...", end="", flush=True)

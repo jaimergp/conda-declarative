@@ -26,6 +26,9 @@ dependencies = [
   # "conda >=23.9.0",
   "tomli>=2.0.1;python_version<'3.11'",
   "tomli-w",
+  "textual",
+  "tree_sitter_toml",
+  "rich",
 ]
 dynamic = ["version"]
 
@@ -43,6 +46,9 @@ platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
 python = ">=3.10"
 conda = ">=23.9"
 tomli-w = "*"
+textual = "*"
+tree_sitter = "*"
+rich = "*"
 
 [tool.pixi.pypi-dependencies]
 conda-declarative = { path  = ".", editable = true }
@@ -82,12 +88,15 @@ pre-commit = "*"
 [tool.pixi.feature.py310.dependencies]
 python = "3.10.*"
 tomli = ">=2.0.1"
+tree_sitter_languages = "*"
 
 [tool.pixi.feature.py311.dependencies]
 python = "3.11.*"
+tree_sitter_languages = "*"
 
 [tool.pixi.feature.py312.dependencies]
 python = "3.12.*"
+tree_sitter_languages = "*"
 
 [tool.pixi.feature.py313.dependencies]
 python = "3.13.*"
