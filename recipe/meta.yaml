@@ -26,6 +26,7 @@ requirements:
     - python >=3.10
     - conda >=23.9.0
     - tomli >=2.0.1
+    - tomli-w
 
 test:
   requires:
