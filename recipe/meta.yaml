@@ -33,7 +33,9 @@ test:
     - python 3.10
   imports:
     - conda_declarative
-    - conda_declarative.main
+    - conda_declarative.apply
+    - conda_declarative.edit
+    - conda_declarative.cli
   commands:
     - conda declarative --help
 
