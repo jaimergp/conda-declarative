@@ -1,5 +1,5 @@
 """
-conda pip subcommand for CLI
+`conda edit` subcommand
 """
 
 from __future__ import annotations
@@ -99,17 +99,19 @@ def execute_apply(args: argparse.Namespace) -> int:
     manifest = read_manifest(context.target_prefix)
     records = solve(
         prefix=context.target_prefix,
-        channels=manifest.channels,  # TODO: merge with context?
+        channels=manifest.get('channels', []),  # TODO: merge with context?
         subdirs=context.subdirs,  # TODO: check if supported
-        specs=manifest.requirements,
+        specs=manifest.get('requirements', []),
     )
     if not context.quiet:
         print(*records, sep="\n")  # This should be a diff'd report
     if context.dry_run:
         raise DryRunExit()
-    lockdir = lock(records, prefix=context.target_prefix)
+
+    lockdir = lock(prefix=context.target_prefix, records=records)
+
     if args.lock_only:
         raise LockOnlyExit()
-    link(lockdir)
+    link(prefix=context.target_prefix, records=records)
 
     return 0

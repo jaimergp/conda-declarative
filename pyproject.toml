@@ -14,7 +14,6 @@ classifiers = [
   "License :: OSI Approved :: BSD License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
@@ -26,6 +25,8 @@ dependencies = [
   # "conda >=23.9.0",
   "tomli>=2.0.1;python_version<'3.11'",
   "tomli-w",
+  "textual",
+  "textual[syntax]",
 ]
 dynamic = ["version"]
 

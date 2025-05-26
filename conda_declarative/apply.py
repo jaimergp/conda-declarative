@@ -54,7 +54,7 @@ def lock(prefix: PathType, records: Iterable[PackageRecord]) -> Path:
     lockdir.mkdir(parents=True)
     for record in records:
         if record.fn.endswith(".tar.bz2"):
-            basename = record[: -len(".tar.bz2")]
+            basename = record.fn[: -len(".tar.bz2")]
         else:
             basename = record.fn.rsplit(".", 1)[0]
         record_lock = Path(lockdir, basename + ".json")
@@ -63,8 +63,9 @@ def lock(prefix: PathType, records: Iterable[PackageRecord]) -> Path:
 
 
 def link(prefix: PathType, records: Iterable[PackageRecord]) -> UnlinkLinkTransaction:
-    unlink_records, link_records = diff_for_unlink_link_precs(prefix, records)
-    setup = PrefixSetup(prefix, unlink_precs=unlink_records, link_precs=link_records)
-    txn = UnlinkLinkTransaction(setup)
-    handle_txn(txn, prefix)
-    return txn
+    return None
+    # unlink_records, link_records = diff_for_unlink_link_precs(prefix, set(records))
+    # setup = PrefixSetup(prefix, unlink_precs=unlink_records, link_precs=link_records)
+    # txn = UnlinkLinkTransaction(setup)
+    # handle_txn(txn, prefix)
+    # return txn
