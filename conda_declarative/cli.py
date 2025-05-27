@@ -1,5 +1,5 @@
 """
-`conda edit` subcommand
+`conda edit` subcommand.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ def configure_parser_edit(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def execute_edit(args: argparse.Namespace) -> int:
+def execute_edit(args: argparse.Namespace):
     from .constants import CONDA_MANIFEST_FILE
     from .edit import run_editor, update_manifest
 
@@ -50,7 +50,7 @@ def execute_edit(args: argparse.Namespace) -> int:
     if not context.quiet:
         print("Opening editor...", end="", flush=True)
 
-    process = run_editor(prefix)
+    run_editor(prefix)
 
     if not context.quiet:
         print(" done.")
@@ -66,7 +66,7 @@ def execute_edit(args: argparse.Namespace) -> int:
             print(*unified_diff(old.splitlines(), new.splitlines()), sep="\n")
 
     if not args.apply:  # nothing else to do
-        return process.returncode
+        return
 
     if not context.quiet:
         print("Applying changes...")

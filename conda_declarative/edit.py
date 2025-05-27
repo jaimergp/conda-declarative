@@ -128,7 +128,7 @@ class QuitModal(ModalScreen):
         self.dismiss(event.button.id == "yes")
 
 
-def run_editor(prefix: PathType) -> CompletedProcess:
+def run_editor(prefix: PathType) -> None:
     app = EditApp(Path(prefix, CONDA_MANIFEST_FILE))
     app.run()
 
