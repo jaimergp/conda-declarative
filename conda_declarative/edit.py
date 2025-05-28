@@ -1,6 +1,4 @@
-"""
-Performs modifications to the manifest file of a given environment.
-"""
+"""Performs modifications to the manifest file of a given environment."""
 
 from __future__ import annotations
 
@@ -19,54 +17,126 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal
 from textual.screen import ModalScreen
-from textual.widgets import Button, Footer, Header, Label, TextArea
+from textual.widgets import Button, DataTable, Footer, Header, Label, TextArea
 
+from .apply import solve
 from .constants import CONDA_MANIFEST_FILE, MANIFEST_TEMPLATE
 
 if TYPE_CHECKING:
-    from subprocess import CompletedProcess
+    from collections.abc import Generator
     from typing import Any
 
     from conda.common.path import PathType
 
 
 class EditApp(App):
+    """Main application which runs upon `conda edit`."""
+
     BINDINGS = [
         Binding("ctrl+q", "quit", "Quit", priority=True),
         Binding("ctrl+s", "save", "Save", priority=True),
     ]
 
-    def __init__(self, filename: os.PathLike):
+    def __init__(
+        self,
+        filename: os.PathLike,
+        prefix: os.PathLike,
+        subdirs: tuple[str, str],
+    ):
         self.filename = filename
-        self.saved = True
-        with open(self.filename) as f:
-            self.text = f.read()
+        self.prefix = prefix
+        self.subdirs = subdirs
 
-        self.text_area = TextArea.code_editor(
-            text=self.text,
+        with open(self.filename) as f:
+            text = f.read()
+
+        self.saved_hash = hash(text)
+        self.editor = TextArea.code_editor(
+            text=text,
             language="toml",
         )
+        self.output = DataTable()
 
         super().__init__()
 
     def on_text_area_changed(self, event: TextArea.Changed) -> None:
-        self.saved = False
-        self.title = f"Editing {self.filename} (Unsaved)"
+        """Run post change actions on the text.
 
-    def compose(self) -> ComposeResult:
+        First, we check for changes compared to the version on disk.
+        If there are changes:
+
+        - Update the title of the app
+        - Check that the text area contains valid toml.
+            - If valid:
+                - Run the solver to get the new dependencies
+                - Update the right hand pane with the new dependencies
+            - Otherwise, make a notification that the toml is invalid
+
+        Parameters
+        ----------
+        event : TextArea.Changed
+            Event that triggered the call
+        """
+        if hash(event.text_area.text) == self.saved_hash:
+            self.title = f"Editing {self.filename}"
+        else:
+            self.title = f"Editing {self.filename} (Unsaved)"
+
+        try:
+            manifest = loads(event.text_area.text)
+        except Exception as e:
+            self.action_notify(
+                f"The current file is invalid TOML: {e}", severity="error"
+            )
+            return
+
+        records = solve(
+            prefix=self.prefix,
+            channels=manifest.get("channels", []),
+            subdirs=self.subdirs,
+            specs=manifest.get("requirements", []),
+        )
+
+        rows = []
+        for record in records:
+            rows.append(
+                (
+                    record.name,
+                    record.version,
+                    record.build,
+                    record.build_number,
+                    record.channel,
+                )
+            )
+
+        self.output.clear()
+        self.output.add_rows(*rows)
+
+    def compose(self) -> Generator[ComposeResult, None, None]:
+        """Yield the widgets that make up the app.
+
+        Returns
+        -------
+        Generator[ComposeResult, None, None]
+            The widgets that make up the app
+        """
         yield Header()
-        yield self.text_area
+        with Horizontal():
+            yield self.editor
+            yield self.output
         yield Footer()
 
     def on_mount(self):
+        """Set the initial configuration of the app."""
         self.title = f"Editing {self.filename}"
+        self.output.add_columns("name", "version", "build", "build_number", "channel")
 
     def action_quit(self) -> None:
         """Quit the editor.
 
         If the file hasn't been saved, ask to save it first.
         """
-        if not self.saved:
+        if hash(self.editor.text) != self.saved_hash:
             # Ask about quitting without saving
             def check_should_save(should_save: bool | None) -> None:
                 """Optionally save before quitting based on the QuitModal return result.
@@ -86,14 +156,16 @@ class EditApp(App):
 
     def action_save(self) -> None:
         """Save the current text to the file."""
-        with open(self.filename, 'w') as f:
-            f.write(self.text_area.text)
+        with open(self.filename, "w") as f:
+            f.write(self.editor.text)
 
-        self.saved = True
+        self.saved_hash = hash(self.editor.text)
         self.title = f"Editing {self.filename}"
 
 
 class QuitModal(ModalScreen):
+    """Modal dialog which appears when trying to quit without having saved."""
+
     DEFAULT_CSS = """
     QuitModal {
         align: center middle;
@@ -117,7 +189,15 @@ class QuitModal(ModalScreen):
         margin: 0 2;
     }
     """
-    def compose(self) -> ComposeResult:
+
+    def compose(self) -> Generator[ComposeResult, None, None]:
+        """Yield the widgets that make up the modal.
+
+        Returns
+        -------
+        Generator[ComposeResult, None, None]
+            The widgets that make up the modal
+        """
         with Container():
             yield Label("Save before quitting?", id="save-label")
             with Horizontal():
@@ -125,11 +205,24 @@ class QuitModal(ModalScreen):
                 yield Button("No", variant="error", id="no")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Respond to the button click.
+
+        Dismisses the modal dialog.
+
+        Parameters
+        ----------
+        event : Button.Pressed
+            Event which triggered this call.
+        """
         self.dismiss(event.button.id == "yes")
 
 
-def run_editor(prefix: PathType) -> None:
-    app = EditApp(Path(prefix, CONDA_MANIFEST_FILE))
+def run_editor(prefix: PathType, subdirs: tuple[str, str]) -> None:
+    app = EditApp(
+        Path(prefix, CONDA_MANIFEST_FILE),
+        prefix,
+        subdirs,
+    )
     app.run()
 
 

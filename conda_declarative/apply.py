@@ -1,6 +1,4 @@
-"""
-Renders a manifest file to disk.
-"""
+"""Renders a manifest file to disk."""
 
 from __future__ import annotations
 
@@ -11,19 +9,17 @@ from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 from conda.base.context import context
-from conda.core.link import UnlinkLinkTransaction, PrefixSetup
+from conda.core.link import UnlinkLinkTransaction
 from conda.models.prefix_graph import PrefixGraph
-from conda.core.solve import diff_for_unlink_link_precs
-from conda.cli.install import handle_txn
 
 from .constants import CONDA_HISTORY_D
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from conda.common.path import PathType
     from conda.models.channel import Channel
     from conda.models.match_spec import MatchSpec
-    from conda.common.path import PathType
     from conda.models.records import PackageRecord
 
 

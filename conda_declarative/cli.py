@@ -1,16 +1,17 @@
-"""
-`conda edit` subcommand.
-"""
+"""`conda edit` subcommand."""
 
 from __future__ import annotations
 
 import argparse
+import os
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 
 from conda.base.context import context
-from conda.exceptions import DryRunExit
 from conda.cli.conda_argparse import add_parser_help
 from conda.cli.helpers import add_parser_prefix, add_parser_verbose
+from conda.exceptions import DryRunExit
 
 from .exceptions import LockOnlyExit
 
@@ -47,10 +48,11 @@ def execute_edit(args: argparse.Namespace):
     else:
         _, old = update_manifest(prefix)
 
-    if not context.quiet:
-        print("Opening editor...", end="", flush=True)
-
-    run_editor(prefix)
+    with set_conda_console():
+        run_editor(
+            prefix,
+            context.subdirs,
+        )
 
     if not context.quiet:
         print(" done.")
@@ -66,10 +68,11 @@ def execute_edit(args: argparse.Namespace):
             print(*unified_diff(old.splitlines(), new.splitlines()), sep="\n")
 
     if not args.apply:  # nothing else to do
-        return
+        return None
 
     if not context.quiet:
         print("Applying changes...")
+
     return execute_apply(
         argparse.Namespace(
             dry_run=False,
@@ -93,15 +96,15 @@ def configure_parser_apply(parser: argparse.ArgumentParser) -> None:
 
 
 def execute_apply(args: argparse.Namespace) -> int:
-    from .edit import read_manifest
     from .apply import link, lock, solve
+    from .edit import read_manifest
 
     manifest = read_manifest(context.target_prefix)
     records = solve(
         prefix=context.target_prefix,
-        channels=manifest.get('channels', []),  # TODO: merge with context?
+        channels=manifest.get("channels", []),  # TODO: merge with context?
         subdirs=context.subdirs,  # TODO: check if supported
-        specs=manifest.get('requirements', []),
+        specs=manifest.get("requirements", []),
     )
     if not context.quiet:
         print(*records, sep="\n")  # This should be a diff'd report
@@ -115,3 +118,23 @@ def execute_apply(args: argparse.Namespace) -> int:
     link(prefix=context.target_prefix, records=records)
 
     return 0
+
+
+@contextmanager
+def set_conda_console() -> Generator[None, None, None]:
+    """Set the CONDA_CONSOLE environment variable to "tui" to use the TUI plugin.
+
+    Returns
+    -------
+    Generator[None, None, None]
+        An empty generator is yielded here to defer environment cleanup
+    """
+    old_conda_console = os.environ.get("CONDA_CONSOLE")
+    os.environ.update({"CONDA_CONSOLE": "tui"})
+
+    yield
+
+    if old_conda_console:
+        os.environ.update({"CONDA_CONSOLE": old_conda_console})
+    else:
+        del os.environ["CONDA_CONSOLE"]
