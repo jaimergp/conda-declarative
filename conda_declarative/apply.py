@@ -30,6 +30,27 @@ def solve(
     specs: Iterable[MatchSpec],
     **solve_final_state_kwargs,
 ) -> tuple[PackageRecord]:
+    """Solve the environment for the given prefix, channels, subdirs, and package specs.
+
+    Parameters
+    ----------
+    prefix : PathType
+        Prefix to solve the environment for
+    channels : Iterable[Channel]
+        Channels to search when looking for valid packages
+    subdirs : Iterable[str]
+        Subdirs to write packages to; see `context.subdirs` for more info
+    specs : Iterable[MatchSpec]
+        Package specs needed in the environment
+    **solve_final_state_kwargs
+        Extra kwargs to pass to `solver.solve_final_state`
+
+    Returns
+    -------
+    tuple[PackageRecord]
+        This is the set of packages that you get when you request the packages passed
+        in `specs`.
+    """
     with patch("conda.history.History.get_requested_specs_map") as mock:
         # We patch History here so it doesn't interfere with the "pure" manifest specs
         # Otherwise the solver will try to adapt to previous user preferences, but this
@@ -45,6 +66,20 @@ def solve(
 
 
 def lock(prefix: PathType, records: Iterable[PackageRecord]) -> Path:
+    """Write a file lock in the prefix for every record passed in `records`.
+
+    Parameters
+    ----------
+    prefix : PathType
+        Prefix where the records reside
+    records : Iterable[PackageRecord]
+        Records which need to be locked
+
+    Returns
+    -------
+    Path
+        Path to the directory containing file locks
+    """
     timestamp = f"{time.time() * 1000:0f}"
     lockdir = Path(prefix) / CONDA_HISTORY_D / timestamp
     lockdir.mkdir(parents=True)
@@ -59,6 +94,21 @@ def lock(prefix: PathType, records: Iterable[PackageRecord]) -> Path:
 
 
 def link(prefix: PathType, records: Iterable[PackageRecord]) -> UnlinkLinkTransaction:
+    """Create and run the `UnlinkLinkTransaction` on the prefix for the given records.
+
+    Parameters
+    ----------
+    prefix : PathType
+        Prefix for which the `UnlinkLinkTransaction` is to be carried out
+    records : Iterable[PackageRecord]
+        Packages for which the `UnlinkLinkTransaction` is being applied to
+
+    Returns
+    -------
+    UnlinkLinkTransaction
+        The transaction carries out the tasks of linking, unlinking, fetching,
+        downgrading, etc the requested packages
+    """
     return None
     # unlink_records, link_records = diff_for_unlink_link_precs(prefix, set(records))
     # setup = PrefixSetup(prefix, unlink_precs=unlink_records, link_precs=link_records)

@@ -218,6 +218,16 @@ class QuitModal(ModalScreen):
 
 
 def run_editor(prefix: PathType, subdirs: tuple[str, str]) -> None:
+    """Launch the textual editor.
+
+    Parameters
+    ----------
+    prefix : PathType
+        Prefix of the context; this is the prefix we will be configuring the environment
+        for
+    subdirs : tuple[str, str]
+        Subdirectories known by conda; see docs for `context.subdirs`
+    """
     app = EditApp(
         Path(prefix, CONDA_MANIFEST_FILE),
         prefix,
@@ -227,12 +237,36 @@ def run_editor(prefix: PathType, subdirs: tuple[str, str]) -> None:
 
 
 def read_manifest(prefix: PathType) -> dict[str, Any]:
+    """Read the manifest from <prefix>/conda-meta/environment.yml.
+
+    Parameters
+    ----------
+    prefix : PathType
+        Prefix to read the manifest for
+
+    Returns
+    -------
+    dict[str, Any]
+        Manifest from the requested prefix
+    """
     manifest_path = Path(prefix, CONDA_MANIFEST_FILE)
     return loads(manifest_path.read_text())
 
 
 def update_manifest(prefix: PathType) -> tuple[str, str]:
-    # TODO: This can/should be delegated to Manifest class that knows how to do these editions
+    """Update the manifest for the given prefix with the user-requested packages.
+
+    Parameters
+    ----------
+    prefix : PathType
+        Prefix to update the manifest for
+
+    Returns
+    -------
+    tuple[str, str]
+        (Old manifest file contents, new manifest file contents)
+    """
+    # This can/should be delegated to Manifest class that knows how to do these editions
     prefix = Path(prefix)
     manifest_path = prefix / CONDA_MANIFEST_FILE
     if manifest_path.is_file():

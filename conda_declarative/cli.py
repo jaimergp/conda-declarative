@@ -17,6 +17,13 @@ from .exceptions import LockOnlyExit
 
 
 def configure_parser_edit(parser: argparse.ArgumentParser) -> None:
+    """Configure the command line argument parser for the `conda edit` subcommand.
+
+    Parameters
+    ----------
+    parser : argparse.ArgumentParser
+        Parser which is to be configured
+    """
     parser.prog = "conda edit"
     add_parser_help(parser)
     add_parser_prefix(parser)
@@ -33,7 +40,19 @@ def configure_parser_edit(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def execute_edit(args: argparse.Namespace):
+def execute_edit(args: argparse.Namespace) -> int:
+    """Read the existing manifest; open the editor app; then apply the user's changes.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Arguments passed to the `conda edit` subcommand
+
+    Returns
+    -------
+    int
+        Return value of the process; 0 means success
+    """
     from .constants import CONDA_MANIFEST_FILE
     from .edit import run_editor, update_manifest
 
@@ -68,7 +87,7 @@ def execute_edit(args: argparse.Namespace):
             print(*unified_diff(old.splitlines(), new.splitlines()), sep="\n")
 
     if not args.apply:  # nothing else to do
-        return None
+        return 0
 
     if not context.quiet:
         print("Applying changes...")
@@ -83,6 +102,13 @@ def execute_edit(args: argparse.Namespace):
 
 
 def configure_parser_apply(parser: argparse.ArgumentParser) -> None:
+    """Configure the argument parser for the `conda apply` subcommand.
+
+    Parameters
+    ----------
+    parser : argparse.ArgumentParser
+        Parser which is to be configured
+    """
     parser.prog = "conda apply"
     add_parser_help(parser)
     add_parser_prefix(parser)
@@ -96,14 +122,26 @@ def configure_parser_apply(parser: argparse.ArgumentParser) -> None:
 
 
 def execute_apply(args: argparse.Namespace) -> int:
+    """Read the current manifest; solve the environment; and apply filesystem changes.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Arguments passed into the `conda apply` subcommand
+
+    Returns
+    -------
+    int
+        Return value of the process; 0 means success
+    """
     from .apply import link, lock, solve
     from .edit import read_manifest
 
     manifest = read_manifest(context.target_prefix)
     records = solve(
         prefix=context.target_prefix,
-        channels=manifest.get("channels", []),  # TODO: merge with context?
-        subdirs=context.subdirs,  # TODO: check if supported
+        channels=manifest.get("channels", []),
+        subdirs=context.subdirs,
         specs=manifest.get("requirements", []),
     )
     if not context.quiet:

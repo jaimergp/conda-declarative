@@ -11,6 +11,7 @@ from .renderers import TuiReporterRenderer
 
 @plugins.hookimpl
 def conda_subcommands():
+    """Implement the new conda subcommands."""
     yield plugins.CondaSubcommand(
         name="edit",
         summary="Edit the manifest file of the given environment.",
@@ -27,6 +28,7 @@ def conda_subcommands():
 
 @plugins.hookimpl
 def conda_reporter_backends():
+    """Implement the TUI reporter for conda."""
     yield CondaReporterBackend(
         name="tui",
         description="Reporter backend for the TUI",
