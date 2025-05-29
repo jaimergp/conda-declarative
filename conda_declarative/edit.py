@@ -21,6 +21,7 @@ from textual.widgets import Button, DataTable, Footer, Header, Label, TextArea
 
 from .apply import solve
 from .constants import CONDA_MANIFEST_FILE, MANIFEST_TEMPLATE
+from .util import set_conda_console
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -90,12 +91,13 @@ class EditApp(App):
             )
             return
 
-        records = solve(
-            prefix=self.prefix,
-            channels=manifest.get("channels", []),
-            subdirs=self.subdirs,
-            specs=manifest.get("requirements", []),
-        )
+        with set_conda_console():
+            records = solve(
+                prefix=self.prefix,
+                channels=manifest.get("channels", []),
+                subdirs=self.subdirs,
+                specs=manifest.get("requirements", []),
+            )
 
         rows = []
         for record in records:

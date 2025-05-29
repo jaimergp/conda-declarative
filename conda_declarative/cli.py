@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import os
-from collections.abc import Generator
-from contextlib import contextmanager
 from pathlib import Path
 
 from conda.base.context import context
@@ -14,6 +11,7 @@ from conda.cli.helpers import add_parser_prefix, add_parser_verbose
 from conda.exceptions import DryRunExit
 
 from .exceptions import LockOnlyExit
+from .util import set_conda_console
 
 
 def configure_parser_edit(parser: argparse.ArgumentParser) -> None:
@@ -156,23 +154,3 @@ def execute_apply(args: argparse.Namespace) -> int:
     link(prefix=context.target_prefix, records=records)
 
     return 0
-
-
-@contextmanager
-def set_conda_console() -> Generator[None, None, None]:
-    """Set the CONDA_CONSOLE environment variable to "tui" to use the TUI plugin.
-
-    Returns
-    -------
-    Generator[None, None, None]
-        An empty generator is yielded here to defer environment cleanup
-    """
-    old_conda_console = os.environ.get("CONDA_CONSOLE")
-    os.environ.update({"CONDA_CONSOLE": "tui"})
-
-    yield
-
-    if old_conda_console:
-        os.environ.update({"CONDA_CONSOLE": old_conda_console})
-    else:
-        del os.environ["CONDA_CONSOLE"]
