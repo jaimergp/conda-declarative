@@ -1,17 +1,26 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
-from conda.common.path import PathType
+from conda.plugins.reporter_backends.console import (
+    SpinnerBase,
+)
 from conda.plugins.types import (
     ProgressBarBase,
     ReporterRendererBase,
 )
 from textual.app import App
 
+if TYPE_CHECKING:
+    from conda.common.path import PathType
+
 
 class TuiProgressBar(ProgressBarBase):
     """Conda progress bar that passes progress info to the TUI."""
+
+    def __init__(self):
+        super().__init__(description="")
 
     def update_to(self, fraction: float) -> None:
         """Update the progress bar to the specified fraction.
@@ -52,14 +61,14 @@ class TuiReporterRenderer(ReporterRendererBase):
         """
         self.app = app
 
-    def detail_view(self, _data: dict[str, str | int | bool], **_kwargs) -> str:
+    def detail_view(self, data: dict[str, str | int | bool], **kwargs) -> str:  # noqa: ARG002
         """Render the output in tabular format.
 
         Parameters
         ----------
-        _data : dict[str, str | int | bool]
+        data : dict[str, str | int | bool]
             Data to be rendered as a table
-        **_kwargs
+        **kwargs
             Unused
 
         Returns
@@ -69,15 +78,15 @@ class TuiReporterRenderer(ReporterRendererBase):
         """
         return ""
 
-    def envs_list(self, _data: Iterable[PathType], **_kwargs) -> str:
+    def envs_list(self, data: Iterable[PathType], **kwargs) -> str:  # noqa: ARG002
         """Render a list of environments.
 
         Parameters
         ----------
-        _data :
-
-        **_kwargs
-
+        data : Iterable[PathType]
+            Unused
+        **kwargs
+            Unused
 
         Returns
         -------
@@ -87,14 +96,14 @@ class TuiReporterRenderer(ReporterRendererBase):
         """
         return ""
 
-    def progress_bar(self, _description: str, **_kwargs) -> TuiProgressBar:
+    def progress_bar(self, description: str, **kwargs) -> TuiProgressBar:  # noqa: ARG002
         """Return the TuiProgressBar used to report progress to the TUI.
 
         Parameters
         ----------
-        _description : str
+        description : str
             Unused
-        **_kwargs
+        **kwargs
             Unused
 
         Returns
@@ -103,3 +112,17 @@ class TuiReporterRenderer(ReporterRendererBase):
             Progress bar which reports progress to the TUI
         """
         return TuiProgressBar()
+
+    def spinner(self, message, failed_message) -> SpinnerBase:
+        return TuiSpinner(message, failed_message)
+
+    def prompt(self, message, choices, default) -> str:
+        pass
+
+
+class TuiSpinner(SpinnerBase):
+    def __enter__(self, *args, **kwargs):
+        return
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return
