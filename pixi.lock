@@ -6549,8 +6549,8 @@ packages:
   timestamp: 1745275309578
 - pypi: ./
   name: conda-declarative
-  version: 0.1.dev8+gdeae2ba.d20250530
-  sha256: d2049e5683f26711a978dd598f4f04e71ee0fa5ae64eedd69d3949b19e4bad04
+  version: 0.1.dev11+g9a9154b.d20250530
+  sha256: 2f03f374d1a50f95460527ede7a3a99c3422c88344ca3fb428c6f0e74df25c4a
   requires_dist:
   - pdbpp
   - textual

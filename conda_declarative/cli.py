@@ -11,7 +11,6 @@ from conda.cli.helpers import add_parser_prefix, add_parser_verbose
 from conda.exceptions import DryRunExit
 
 from .exceptions import LockOnlyExit
-from .util import set_conda_console
 
 
 def configure_parser_edit(parser: argparse.ArgumentParser) -> None:
@@ -65,22 +64,10 @@ def execute_edit(args: argparse.Namespace) -> int:
     else:
         old, _ = update_manifest(prefix)
 
-    with set_conda_console():
-        run_editor(
-            prefix,
-            context.subdirs,
-        )
-
-    new = manifest_path.read_text()
-
-    if not context.quiet:
-        if old == new:
-            print("No changes detected.")
-        else:
-            from difflib import unified_diff
-
-            print("Detected changes:")
-            print(*unified_diff(old.splitlines(), new.splitlines()), sep="\n")
+    run_editor(
+        prefix,
+        context.subdirs,
+    )
 
     if not args.apply:  # nothing else to do
         return 0
@@ -145,10 +132,9 @@ def execute_apply(args: argparse.Namespace) -> int:
     if context.dry_run:
         raise DryRunExit()
 
-    lockdir = lock(prefix=context.target_prefix, records=records)
-
     if args.lock_only:
+        lock(prefix=context.target_prefix, records=records)
         raise LockOnlyExit()
-    link(prefix=context.target_prefix, records=records)
 
+    link(prefix=context.target_prefix, records=records, args=args)
     return 0

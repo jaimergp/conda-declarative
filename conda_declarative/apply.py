@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
+from boltons.setutils import IndexedSet
 from conda.base.context import context
-from conda.core.link import UnlinkLinkTransaction
+from conda.cli.install import handle_txn
+from conda.core.link import PrefixSetup, UnlinkLinkTransaction
+from conda.core.solve import diff_for_unlink_link_precs
 from conda.models.prefix_graph import PrefixGraph
 
 from .constants import CONDA_HISTORY_D
@@ -94,7 +98,9 @@ def lock(prefix: PathType, records: Iterable[PackageRecord]) -> Path:
     return lockdir
 
 
-def link(prefix: PathType, records: Iterable[PackageRecord]) -> UnlinkLinkTransaction:
+def link(
+    prefix: PathType, records: Iterable[PackageRecord], args: argparse.Namespace
+) -> UnlinkLinkTransaction:
     """Create and run the `UnlinkLinkTransaction` on the prefix for the given records.
 
     Parameters
@@ -103,6 +109,8 @@ def link(prefix: PathType, records: Iterable[PackageRecord]) -> UnlinkLinkTransa
         Prefix for which the `UnlinkLinkTransaction` is to be carried out
     records : Iterable[PackageRecord]
         Packages for which the `UnlinkLinkTransaction` is being applied to
+    args : argparse.Namespace
+        Command line arguments passed in
 
     Returns
     -------
@@ -110,9 +118,18 @@ def link(prefix: PathType, records: Iterable[PackageRecord]) -> UnlinkLinkTransa
         The transaction carries out the tasks of linking, unlinking, fetching,
         downgrading, etc the requested packages
     """
-    return None
-    # unlink_records, link_records = diff_for_unlink_link_precs(prefix, set(records))
-    # setup = PrefixSetup(prefix, unlink_precs=unlink_records, link_precs=link_records)
-    # txn = UnlinkLinkTransaction(setup)
-    # handle_txn(txn, prefix)
-    # return txn
+    unlink_records, link_records = diff_for_unlink_link_precs(
+        prefix, IndexedSet(records)
+    )
+    txn = UnlinkLinkTransaction(
+        PrefixSetup(
+            target_prefix=prefix,
+            unlink_precs=unlink_records,
+            link_precs=link_records,
+            remove_specs=(),
+            update_specs=(),
+            neutered_specs=(),
+        )
+    )
+    handle_txn(txn, prefix, args, False, True)
+    return txn
