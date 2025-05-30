@@ -59,8 +59,9 @@ def solve(
         # when linking / unlinking thanks to the UnlinkLinkTransaction machinery.
         mock.return_value = {}
         solver = context.plugin_manager.get_cached_solver_backend()(
-            prefix, channels, subdirs, specs_to_add=specs
+            str(prefix), channels, subdirs, specs_to_add=specs
         )
+
         records = solver.solve_final_state(**solve_final_state_kwargs)
     return tuple(dict.fromkeys(PrefixGraph(records).graph))
 

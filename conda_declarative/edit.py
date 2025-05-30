@@ -13,11 +13,14 @@ except ImportError:
 
 import tomli_w
 from conda.history import History
+from conda.plugins.virtual_packages.cuda import cached_cuda_version
+from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal
 from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Footer, Header, Label, TextArea
+from textual.worker import Worker
 
 from .apply import solve
 from .constants import CONDA_MANIFEST_FILE, MANIFEST_TEMPLATE
@@ -28,6 +31,16 @@ if TYPE_CHECKING:
     from typing import Any
 
     from conda.common.path import PathType
+
+
+# Call this once upon module initialization because it ensures the cuda
+# version is cached, which is needed when retrieving virtual packages.
+# If the cuda version is not cached up front, the daemonic subprocess
+# spawned by conda to retrieve the cuda version interferes with the
+# textual's event loop, causing calls to `solve` to fail. Fortunately
+# we can just ensure this is cached up front to avoid the issue
+# altogether.
+cuda = cached_cuda_version()
 
 
 class EditApp(App):
@@ -60,7 +73,7 @@ class EditApp(App):
 
         super().__init__()
 
-    def on_text_area_changed(self, event: TextArea.Changed) -> None:
+    async def on_text_area_changed(self, event: TextArea.Changed) -> None:
         """Run post change actions on the text.
 
         First, we check for changes compared to the version on disk.
@@ -99,20 +112,35 @@ class EditApp(App):
                 specs=manifest.get("requirements", []),
             )
 
-        rows = []
-        for record in records:
-            rows.append(
-                (
-                    record.name,
-                    record.version,
-                    record.build,
-                    record.build_number,
-                    record.channel,
-                )
-            )
+        self.notify(str(records))
 
-        self.output.clear()
-        self.output.add_rows(*rows)
+        # self.solve(
+        #     prefix=self.prefix,
+        #     channels=manifest.get("channels", []),
+        #     subdirs=self.subdirs,
+        #     specs=manifest.get("requirements", []),
+        # )
+
+    @work(thread=False)
+    async def solve(self, prefix, channels, subdirs, specs):
+        with set_conda_console():
+            return solve(prefix, channels, subdirs, specs)
+
+    def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
+        self.log(event)
+        # rows = []
+        # for record in records:
+        #     rows.append(
+        #         (
+        #             record.name,
+        #             record.version,
+        #             record.build,
+        #             record.build_number,
+        #             record.channel,
+        #         )
+        #     )
+        # self.output.clear()
+        # self.output.add_rows(*rows)
 
     def compose(self) -> Generator[ComposeResult, None, None]:
         """Yield the widgets that make up the app.
@@ -232,7 +260,7 @@ def run_editor(prefix: PathType, subdirs: tuple[str, str]) -> None:
     """
     app = EditApp(
         Path(prefix, CONDA_MANIFEST_FILE),
-        prefix,
+        str(prefix),
         subdirs,
     )
     app.run()
