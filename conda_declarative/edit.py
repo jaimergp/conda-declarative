@@ -20,7 +20,6 @@ from textual.binding import Binding
 from textual.containers import Container, Horizontal
 from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Footer, Header, Label, TextArea
-from textual.worker import Worker
 
 from .apply import solve
 from .constants import CONDA_MANIFEST_FILE, MANIFEST_TEMPLATE
@@ -51,6 +50,13 @@ class EditApp(App):
         Binding("ctrl+s", "save", "Save", priority=True),
     ]
 
+    DEFAULT_CSS = """
+    TextArea {
+        align: center middle;
+        height: 100%;
+    }
+    """
+
     def __init__(
         self,
         filename: os.PathLike,
@@ -64,7 +70,7 @@ class EditApp(App):
         with open(self.filename) as f:
             text = f.read()
 
-        self.saved_hash = hash(text)
+        self.saved_text = text
         self.editor = TextArea.code_editor(
             text=text,
             language="toml",
@@ -91,40 +97,37 @@ class EditApp(App):
         event : TextArea.Changed
             Event that triggered the call
         """
-        if hash(event.text_area.text) == self.saved_hash:
+        if event.text_area.text == self.saved_text:
             self.title = f"Editing {self.filename}"
         else:
             self.title = f"Editing {self.filename} (Unsaved)"
 
+        self.output.loading = True
         self.run_worker(self.update_table(), exclusive=True)
 
-    async def update_table(self):
+    async def update_table(self) -> None:
+        """Update the table with the solution associated with the current manifest."""
+        # Since this function runs inside an exclusive worker, this await serves to
+        # debounce input to avoid solving on every keypress.
         await asyncio.sleep(1)
         try:
-            manifest = await loads(self.editor.text)
+            manifest = loads(self.editor.text)
         except Exception as e:
-            self.action_notify(
+            self.notify(
                 f"The current file is invalid TOML: {e}", severity="error"
             )
             return
 
-        self.run_worker(
-            self.solve(
+        with set_conda_console():
+            records = solve(
                 prefix=self.prefix,
                 channels=manifest.get("channels", []),
                 subdirs=self.subdirs,
                 specs=manifest.get("requirements", []),
-            ),
-            exclusive=True,
-        )
-
-    async def solve(self, prefix, channels, subdirs, specs) -> None:
-        await asyncio.sleep(1)
-        with set_conda_console():
-            records = solve(prefix, channels, subdirs, specs)
+            )
 
         rows = []
-        for record in records:
+        for record in sorted(records, key=lambda record: record.name):
             rows.append(
                 (
                     record.name,
@@ -135,12 +138,8 @@ class EditApp(App):
                 )
             )
         self.output.clear()
-        # self.output.add_columns("name", "version", "build", "build_number", "channel")
         self.output.add_rows(rows)
-        # self.output.sort("name")
-
-    def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
-        self.notify(str(event))
+        self.output.loading = False
 
     def compose(self) -> Generator[ComposeResult, None, None]:
         """Yield the widgets that make up the app.
@@ -160,13 +159,15 @@ class EditApp(App):
         """Set the initial configuration of the app."""
         self.title = f"Editing {self.filename}"
         self.output.add_columns("name", "version", "build", "build_number", "channel")
+        self.output.loading = True
+        self.run_worker(self.update_table(), exclusive=True)
 
     def action_quit(self) -> None:
         """Quit the editor.
 
         If the file hasn't been saved, ask to save it first.
         """
-        if hash(self.editor.text) != self.saved_hash:
+        if self.editor.text != self.saved_text:
             # Ask about quitting without saving
             def check_should_save(should_save: bool | None) -> None:
                 """Optionally save before quitting based on the QuitModal return result.
@@ -189,7 +190,7 @@ class EditApp(App):
         with open(self.filename, "w") as f:
             f.write(self.editor.text)
 
-        self.saved_hash = hash(self.editor.text)
+        self.saved_text = self.editor.text
         self.title = f"Editing {self.filename}"
 
 

@@ -63,7 +63,7 @@ def execute_edit(args: argparse.Namespace) -> int:
     if manifest_path.is_file():
         old = manifest_path.read_text()
     else:
-        _, old = update_manifest(prefix)
+        old, _ = update_manifest(prefix)
 
     with set_conda_console():
         run_editor(
@@ -71,32 +71,30 @@ def execute_edit(args: argparse.Namespace) -> int:
             context.subdirs,
         )
 
-    # if not context.quiet:
-    #     print(" done.")
-    # new = manifest_path.read_text()
-    #
-    # if not context.quiet:
-    #     if old == new:
-    #         print("No changes detected.")
-    #     else:
-    #         from difflib import unified_diff
-    #
-    #         print("Detected changes:")
-    #         print(*unified_diff(old.splitlines(), new.splitlines()), sep="\n")
-    #
-    # if not args.apply:  # nothing else to do
-    #     return 0
-    #
-    # if not context.quiet:
-    #     print("Applying changes...")
-    #
-    # return execute_apply(
-    #     argparse.Namespace(
-    #         dry_run=False,
-    #         lock_only=False,
-    #         **vars(args),
-    #     )
-    # )
+    new = manifest_path.read_text()
+
+    if not context.quiet:
+        if old == new:
+            print("No changes detected.")
+        else:
+            from difflib import unified_diff
+
+            print("Detected changes:")
+            print(*unified_diff(old.splitlines(), new.splitlines()), sep="\n")
+
+    if not args.apply:  # nothing else to do
+        return 0
+
+    if not context.quiet:
+        print("Applying changes...")
+
+    return execute_apply(
+        argparse.Namespace(
+            dry_run=False,
+            lock_only=False,
+            **vars(args),
+        )
+    )
 
 
 def configure_parser_apply(parser: argparse.ArgumentParser) -> None:
