@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -14,7 +15,6 @@ except ImportError:
 import tomli_w
 from conda.history import History
 from conda.plugins.virtual_packages.cuda import cached_cuda_version
-from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal
@@ -58,7 +58,7 @@ class EditApp(App):
         subdirs: tuple[str, str],
     ):
         self.filename = filename
-        self.prefix = prefix
+        self.prefix = str(prefix)
         self.subdirs = subdirs
 
         with open(self.filename) as f:
@@ -96,51 +96,51 @@ class EditApp(App):
         else:
             self.title = f"Editing {self.filename} (Unsaved)"
 
+        self.run_worker(self.update_table(), exclusive=True)
+
+    async def update_table(self):
+        await asyncio.sleep(1)
         try:
-            manifest = loads(event.text_area.text)
+            manifest = await loads(self.editor.text)
         except Exception as e:
             self.action_notify(
                 f"The current file is invalid TOML: {e}", severity="error"
             )
             return
 
-        with set_conda_console():
-            records = solve(
+        self.run_worker(
+            self.solve(
                 prefix=self.prefix,
                 channels=manifest.get("channels", []),
                 subdirs=self.subdirs,
                 specs=manifest.get("requirements", []),
-            )
+            ),
+            exclusive=True,
+        )
 
-        self.notify(str(records))
-
-        # self.solve(
-        #     prefix=self.prefix,
-        #     channels=manifest.get("channels", []),
-        #     subdirs=self.subdirs,
-        #     specs=manifest.get("requirements", []),
-        # )
-
-    @work(thread=False)
-    async def solve(self, prefix, channels, subdirs, specs):
+    async def solve(self, prefix, channels, subdirs, specs) -> None:
+        await asyncio.sleep(1)
         with set_conda_console():
-            return solve(prefix, channels, subdirs, specs)
+            records = solve(prefix, channels, subdirs, specs)
+
+        rows = []
+        for record in records:
+            rows.append(
+                (
+                    record.name,
+                    record.version,
+                    record.build,
+                    record.build_number,
+                    record.channel,
+                )
+            )
+        self.output.clear()
+        # self.output.add_columns("name", "version", "build", "build_number", "channel")
+        self.output.add_rows(rows)
+        # self.output.sort("name")
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
-        self.log(event)
-        # rows = []
-        # for record in records:
-        #     rows.append(
-        #         (
-        #             record.name,
-        #             record.version,
-        #             record.build,
-        #             record.build_number,
-        #             record.channel,
-        #         )
-        #     )
-        # self.output.clear()
-        # self.output.add_rows(*rows)
+        self.notify(str(event))
 
     def compose(self) -> Generator[ComposeResult, None, None]:
         """Yield the widgets that make up the app.
@@ -156,7 +156,7 @@ class EditApp(App):
             yield self.output
         yield Footer()
 
-    def on_mount(self):
+    async def on_mount(self):
         """Set the initial configuration of the app."""
         self.title = f"Editing {self.filename}"
         self.output.add_columns("name", "version", "build", "build_number", "channel")
@@ -260,7 +260,7 @@ def run_editor(prefix: PathType, subdirs: tuple[str, str]) -> None:
     """
     app = EditApp(
         Path(prefix, CONDA_MANIFEST_FILE),
-        str(prefix),
+        Path(prefix),
         subdirs,
     )
     app.run()
