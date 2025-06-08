@@ -76,6 +76,7 @@ class EditApp(App):
             language="toml",
         )
         self.output = DataTable()
+        self.output_data = []
 
         super().__init__()
 
@@ -105,21 +106,30 @@ class EditApp(App):
         self.output.loading = True
         self.run_worker(self.update_table(), exclusive=True)
 
-    async def update_table(self) -> None:
+    async def update_table(self, debounce: int = 1) -> None:
         """Update the table with the solution associated with the current manifest."""
         # Since this function runs inside an exclusive worker, this await serves to
         # debounce input to avoid solving on every keypress.
-        await asyncio.sleep(1)
+        if debounce > 0:
+            await asyncio.sleep(debounce)
         try:
-            manifest = loads(self.editor.text)
+            manifest = await asyncio.to_thread(loads, self.editor.text)
         except Exception as e:
             self.notify(
                 f"The current file is invalid TOML: {e}", severity="error"
             )
             return
 
+        # Store the current data so that we know which rows to update
+        current_data = {}
+        for row in self.output.rows:
+            name, version, build, build_number, channel = self.output.get_row(row)
+            current_data[name] = [version, build, build_number, channel]
+
+
         with set_conda_console():
-            records = solve(
+            records = await asyncio.to_thread(
+                solve,
                 prefix=self.prefix,
                 channels=manifest.get("channels", []),
                 subdirs=self.subdirs,
@@ -127,7 +137,7 @@ class EditApp(App):
             )
 
         rows = []
-        for record in sorted(records, key=lambda record: record.name):
+        for record in records:
             rows.append(
                 (
                     record.name,
@@ -137,8 +147,10 @@ class EditApp(App):
                     record.channel,
                 )
             )
+
         self.output.clear()
         self.output.add_rows(rows)
+        self.output.sort('name')
         self.output.loading = False
 
     def compose(self) -> Generator[ComposeResult, None, None]:
@@ -158,9 +170,10 @@ class EditApp(App):
     async def on_mount(self):
         """Set the initial configuration of the app."""
         self.title = f"Editing {self.filename}"
-        self.output.add_columns("name", "version", "build", "build_number", "channel")
+        for label in ("name", "version", "build", "build_number", "channel"):
+            self.output.add_column(label, key=label)
         self.output.loading = True
-        self.run_worker(self.update_table(), exclusive=True)
+        self.run_worker(self.update_table(debounce=0), exclusive=True)
 
     def action_quit(self) -> None:
         """Quit the editor.
