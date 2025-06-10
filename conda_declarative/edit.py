@@ -17,9 +17,19 @@ from conda.history import History
 from conda.plugins.virtual_packages.cuda import cached_cuda_version
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal
+from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, DataTable, Footer, Header, Label, TextArea
+from textual.widgets import (
+    Button,
+    Checkbox,
+    DataTable,
+    Footer,
+    Header,
+    Input,
+    Label,
+    ProgressBar,
+    TextArea,
+)
 
 from .apply import solve
 from .constants import CONDA_MANIFEST_FILE, MANIFEST_TEMPLATE
@@ -53,7 +63,7 @@ class EditApp(App):
     DEFAULT_CSS = """
     TextArea {
         align: center middle;
-        height: 100%;
+        height: auto;
     }
     """
 
@@ -77,6 +87,10 @@ class EditApp(App):
         )
         self.output = DataTable()
         self.output_data = []
+        self.search = Input(placeholder=" ")
+        self.regex = Checkbox(label="regex")
+        self.case = Checkbox(label="case sensitive")
+        self.progress = ProgressBar()
 
         super().__init__()
 
@@ -103,11 +117,18 @@ class EditApp(App):
         else:
             self.title = f"Editing {self.filename} (Unsaved)"
 
-        self.output.loading = True
         self.run_worker(self.update_table(), exclusive=True)
 
     async def update_table(self, debounce: int = 1) -> None:
-        """Update the table with the solution associated with the current manifest."""
+        """Update the table in the right hand pane.
+
+        The table will be updated with the solution to the environment in the left hand pane.
+
+        Parameters
+        ----------
+        debounce : int
+            Length of time to debounce the update
+        """
         # Since this function runs inside an exclusive worker, this await serves to
         # debounce input to avoid solving on every keypress.
         if debounce > 0:
@@ -151,7 +172,6 @@ class EditApp(App):
         self.output.clear()
         self.output.add_rows(rows)
         self.output.sort('name')
-        self.output.loading = False
 
     def compose(self) -> Generator[ComposeResult, None, None]:
         """Yield the widgets that make up the app.
@@ -164,7 +184,14 @@ class EditApp(App):
         yield Header()
         with Horizontal():
             yield self.editor
-            yield self.output
+
+            with Vertical():
+                with Horizontal():
+                    yield self.search
+                    yield self.regex
+                    yield self.case
+                yield self.output
+                yield self.progress
         yield Footer()
 
     async def on_mount(self):
@@ -172,7 +199,6 @@ class EditApp(App):
         self.title = f"Editing {self.filename}"
         for label in ("name", "version", "build", "build_number", "channel"):
             self.output.add_column(label, key=label)
-        self.output.loading = True
         self.run_worker(self.update_table(debounce=0), exclusive=True)
 
     def action_quit(self) -> None:
