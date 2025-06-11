@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -15,6 +16,7 @@ except ImportError:
 import tomli_w
 from conda.history import History
 from conda.plugins.virtual_packages.cuda import cached_cuda_version
+from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
@@ -24,7 +26,6 @@ from textual.widgets import (
     Checkbox,
     DataTable,
     Footer,
-    Header,
     Input,
     Label,
     ProgressBar,
@@ -52,6 +53,13 @@ if TYPE_CHECKING:
 cuda = cached_cuda_version()
 
 
+class SortOrder(Enum):
+    """Table sorting order."""
+
+    ASC = "ascending"
+    DESC = "descending"
+
+
 class EditApp(App):
     """Main application which runs upon `conda edit`."""
 
@@ -61,9 +69,23 @@ class EditApp(App):
     ]
 
     DEFAULT_CSS = """
-    TextArea {
-        align: center middle;
-        height: auto;
+    #search-area {
+        margin: 1 0 0 0;
+        height: 4;
+        Input {
+            width: 1fr;
+        }
+    }
+    #search-controls {
+        align: left middle;
+        width: 20;
+        margin: 0 0;
+    }
+    #output {
+        height: 1fr;
+    }
+    #progress-area {
+        height: 1;
     }
     """
 
@@ -81,18 +103,63 @@ class EditApp(App):
             text = f.read()
 
         self.saved_text = text
-        self.editor = TextArea.code_editor(
-            text=text,
-            language="toml",
-        )
-        self.output = DataTable()
-        self.output_data = []
+        self.editor = TextArea.code_editor(text=text, language="toml", id="editor")
         self.search = Input(placeholder=" ")
-        self.regex = Checkbox(label="regex")
-        self.case = Checkbox(label="case sensitive")
+        self.regex = Checkbox(label="regex", compact=True)
+        self.case = Checkbox(label="case sensitive", compact=True)
+        self.progress_label = Label()
         self.progress = ProgressBar()
 
+        self.table = DataTable(id="output", cursor_type="row")
+        self.table_data = []
+        self.table_sort_key = "name"
+        self.table_sort_order = SortOrder.ASC
+
         super().__init__()
+
+        self.set_status("done")
+
+    def set_status(self, text: str) -> None:
+        """Set the progress label to the given text.
+
+        Ensures that the progress label is properly padded.
+
+        Parameters
+        ----------
+        text : str
+            Text to set the progress bar label to
+        """
+        label = f"Status: {text}"
+        if text != "done":
+            label += "..."
+
+        self.progress_label.update(f"{label:<30}")
+
+    @on(DataTable.HeaderSelected)
+    async def handle_header_selected(self, event: DataTable.HeaderSelected) -> None:
+        """Sort the table when a column header is selected.
+
+        If the current column is clicked again, reverse the sort order.
+
+        Parameters
+        ----------
+        event : DataTable.HeaderSelected
+            Header which was clicked by the user
+        """
+        sort_key = str(event.column_key.value)
+
+        if sort_key != self.table_sort_key:
+            self.table_sort_key = sort_key
+        else:
+            if self.table_sort_order == SortOrder.ASC:
+                self.table_sort_order = SortOrder.DESC
+            else:
+                self.table_sort_order = SortOrder.ASC
+
+        self.table.sort(
+            self.table_sort_key,
+            reverse=self.table_sort_order == SortOrder.DESC,
+        )
 
     async def on_text_area_changed(self, event: TextArea.Changed) -> None:
         """Run post change actions on the text.
@@ -134,20 +201,19 @@ class EditApp(App):
         if debounce > 0:
             await asyncio.sleep(debounce)
         try:
+            self.set_status("reading toml")
             manifest = await asyncio.to_thread(loads, self.editor.text)
         except Exception as e:
-            self.notify(
-                f"The current file is invalid TOML: {e}", severity="error"
-            )
+            self.notify(f"The current file is invalid TOML: {e}", severity="error")
             return
 
         # Store the current data so that we know which rows to update
         current_data = {}
-        for row in self.output.rows:
-            name, version, build, build_number, channel = self.output.get_row(row)
+        for row in self.table.rows:
+            name, version, build, build_number, channel = self.table.get_row(row)
             current_data[name] = [version, build, build_number, channel]
 
-
+        self.set_status("solving")
         with set_conda_console():
             records = await asyncio.to_thread(
                 solve,
@@ -165,13 +231,14 @@ class EditApp(App):
                     record.version,
                     record.build,
                     record.build_number,
-                    record.channel,
+                    str(record.channel),
                 )
             )
 
-        self.output.clear()
-        self.output.add_rows(rows)
-        self.output.sort('name')
+        self.table.clear()
+        self.table.add_rows(rows)
+        self.table.sort(self.table_sort_key)
+        self.set_status("done")
 
     def compose(self) -> Generator[ComposeResult, None, None]:
         """Yield the widgets that make up the app.
@@ -181,24 +248,25 @@ class EditApp(App):
         Generator[ComposeResult, None, None]
             The widgets that make up the app
         """
-        yield Header()
         with Horizontal():
             yield self.editor
-
             with Vertical():
-                with Horizontal():
+                with Horizontal(id="search-area"):
                     yield self.search
-                    yield self.regex
-                    yield self.case
-                yield self.output
-                yield self.progress
+                    with Vertical(id="search-controls"):
+                        yield self.regex
+                        yield self.case
+                yield self.table
+                with Horizontal(id="progress-area"):
+                    yield self.progress_label
+                    yield self.progress
         yield Footer()
 
     async def on_mount(self):
         """Set the initial configuration of the app."""
         self.title = f"Editing {self.filename}"
         for label in ("name", "version", "build", "build_number", "channel"):
-            self.output.add_column(label, key=label)
+            self.table.add_column(label, key=label)
         self.run_worker(self.update_table(debounce=0), exclusive=True)
 
     def action_quit(self) -> None:

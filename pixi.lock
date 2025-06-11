@@ -6448,11 +6448,11 @@ packages:
   timestamp: 1748431533324
 - pypi: ./
   name: conda-declarative
-  version: 0.1.dev18+ga52a8fe.d20250608
-  sha256: 3947b36aaa5862b623ba75da1814dd19d3ab59012f026a6979fc07ad788fc58f
+  version: 0.1.dev20+g2b35fd1.d20250611
+  sha256: 5a5a8654e722ea34de9f1bc4222eca82bca356adc590a56adadb6c9f3e409047
   requires_dist:
   - boltons
-  - textual
+  - textual>=3.3.0
   - textual[syntax]
   - tomli-w
   - tomli>=2.0.1 ; python_full_version < '3.11'
