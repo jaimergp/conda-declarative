@@ -13,13 +13,18 @@ try:
 except ImportError:
     from tomli import loads
 
+from collections.abc import Iterable
+
 import tomli_w
 from conda.history import History
+from conda.models.records import PrefixRecord
 from conda.plugins.virtual_packages.cuda import cached_cuda_version
+from rich.style import Style
+from rich.text import Text as RichText
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Center, Container, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
@@ -28,7 +33,6 @@ from textual.widgets import (
     Footer,
     Input,
     Label,
-    ProgressBar,
     TextArea,
 )
 
@@ -51,6 +55,16 @@ if TYPE_CHECKING:
 # we can just ensure this is cached up front to avoid the issue
 # altogether.
 cuda = cached_cuda_version()
+
+
+class Text(RichText):
+    """A Text class which allows comparison between Text and str objects for sorting."""
+
+    def __lt__(self, other: Any) -> bool:  # noqa: ANN401
+        return str(self) < other
+
+    def __gt__(self, other: Any) -> bool:  # noqa: ANN401
+        return str(self) > other
 
 
 class SortOrder(Enum):
@@ -95,6 +109,8 @@ class EditApp(App):
         prefix: os.PathLike,
         subdirs: tuple[str, str],
     ):
+        super().__init__()
+
         self.filename = filename
         self.prefix = str(prefix)
         self.subdirs = subdirs
@@ -108,14 +124,15 @@ class EditApp(App):
         self.regex = Checkbox(label="regex", compact=True)
         self.case = Checkbox(label="case sensitive", compact=True)
         self.progress_label = Label()
-        self.progress = ProgressBar()
 
         self.table = DataTable(id="output", cursor_type="row")
-        self.table_data = []
         self.table_sort_key = "name"
         self.table_sort_order = SortOrder.ASC
 
-        super().__init__()
+        # Save the solution for the currently saved environment spec
+        # and for the pending environment spec
+        self.saved_solution_table = None
+        self.current_solution_table = None
 
         self.set_status("done")
 
@@ -216,40 +233,103 @@ class EditApp(App):
             manifest = await asyncio.to_thread(loads, self.editor.text)
         except Exception as e:
             self.notify(f"The current file is invalid TOML: {e}", severity="error")
+            self.set_status("done")
             return
-
-        # Store the current data so that we know which rows to update
-        current_data = {}
-        for row in self.table.rows:
-            name, version, build, build_number, channel = self.table.get_row(row)
-            current_data[name] = [version, build, build_number, channel]
 
         self.set_status("solving")
         with set_conda_console():
-            records = await asyncio.to_thread(
-                solve,
-                prefix=self.prefix,
-                channels=manifest.get("channels", []),
-                subdirs=self.subdirs,
-                specs=manifest.get("requirements", []),
-            )
+            try:
+                records = await asyncio.to_thread(
+                    solve,
+                    prefix=self.prefix,
+                    channels=manifest.get("channels", []),
+                    subdirs=self.subdirs,
+                    specs=manifest.get("requirements", []),
+                )
+            except Exception as e:
+                # Disable markup styling here because conda exceptions include ANSI
+                # color codes which don't play nice with textual markup enabled
+                self.notify(
+                    f"No valid solution for the given requirements: {e}",
+                    severity="error",
+                    markup=False,
+                )
+                self.set_status("done")
+                return
 
+        self.current_solution_table = self.format_table_data(records)
+        self.render_table(self.current_solution_table)
+        self.set_status("done")
+
+    def format_table_data(
+        self,
+        records: Iterable[PrefixRecord],
+    ) -> list[tuple[str | Text, ...]]:
+        """Format the solved records for printing into the table.
+
+        Packages will be compared to the current environment file. Packages which
+        are added or removed will be specially marked up.
+
+        Parameters
+        ----------
+        records : Iterable[PrefixRecord]
+            Solved set of records which will exist in the final environment
+
+        Returns
+        -------
+        list[tuple[str | Text, ...]]
+            A list of marked up rows to display in the table
+        """
         rows = []
-        for record in records:
-            rows.append(
-                (
+
+        if self.saved_solution_table is None:
+            # If this is the first time running the solver, store the solved
+            # records for comparison to future solves
+            for record in records:
+                rows.append(
+                    (
+                        record.name,
+                        record.version,
+                        record.build,
+                        record.build_number,
+                        str(record.channel),
+                    )
+                )
+            self.saved_solution_table = rows
+        else:
+            # Otherwise, compare the packages in the solution to the current
+            # set of packages
+            for record in records:
+                row = (
                     record.name,
                     record.version,
                     record.build,
                     record.build_number,
                     str(record.channel),
                 )
-            )
 
-        self.table.clear()
-        self.table.add_rows(rows)
-        self.table.sort(self.table_sort_key)
-        self.set_status("done")
+                if row in self.saved_solution_table:
+                    # If the package is unchanged, don't mark it up
+                    rows.append(row)
+                else:
+                    # If a new package is added, apply special formatting
+                    rows.append(
+                        (Text(row[0], style=Style(color="blue", bold=True)), *row[1:])
+                    )
+
+            for row in self.saved_solution_table:
+                if row not in rows:
+                    # If any package is being removed, also apply special formatting
+                    rows.append(
+                        (
+                            Text(
+                                row[0], style=Style(color="red", bold=True, strike=True)
+                            ),
+                            *row[1:],
+                        )
+                    )
+
+        return rows
 
     def compose(self) -> Generator[ComposeResult, None, None]:
         """Yield the widgets that make up the app.
@@ -268,9 +348,8 @@ class EditApp(App):
                         yield self.regex
                         yield self.case
                 yield self.table
-                with Horizontal(id="progress-area"):
+                with Horizontal(id="progress-area"), Center():
                     yield self.progress_label
-                    yield self.progress
         yield Footer()
 
     async def on_mount(self):
@@ -306,13 +385,52 @@ class EditApp(App):
         else:
             self.exit()
 
+    def plainify_table_data(
+        self, rows: Iterable[tuple[Text | str, ...]]
+    ) -> list[tuple[str, ...]]:
+        """Convert any `Text` instances to plain strings in table data.
+
+        Parameters
+        ----------
+        rows : Iterable[tuple[Text | str, ...]]
+            Table data to reformat
+
+        Returns
+        -------
+        list[tuple[str, ...]]
+            Plain table data, without any Text instances
+        """
+        plain = []
+        for row in rows:
+            plain.append([str(item) for item in row])
+        return plain
+
+    def render_table(self, rows: Iterable[tuple[Text | str, ...]]) -> None:
+        """Clear the table and render the given rows.
+
+        Parameters
+        ----------
+        rows : Iterable[tuple[Text | str, ...]]
+            Rows to render in the table
+        """
+        self.table.clear()
+        self.table.add_rows(rows)
+        self.table.sort(self.table_sort_key)
+
     def action_save(self) -> None:
         """Save the current text to the file."""
         with open(self.filename, "w") as f:
             f.write(self.editor.text)
 
-        self.saved_text = self.editor.text
         self.title = f"Editing {self.filename}"
+        self.saved_text = self.editor.text
+
+        # Save the current state of the table; rerender the table with plain
+        # markup now that it has been applied.
+        self.saved_solution_table = self.plainify_table_data(
+            self.current_solution_table
+        )
+        self.render_table(self.saved_solution_table)
 
 
 class QuitModal(ModalScreen):
