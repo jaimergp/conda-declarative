@@ -146,7 +146,8 @@ class EditApp(App):
         event : DataTable.HeaderSelected
             Header which was clicked by the user
         """
-        sort_key = str(event.column_key.value)
+        column_key = event.column_key
+        sort_key = str(column_key.value)
 
         if sort_key != self.table_sort_key:
             self.table_sort_key = sort_key
@@ -161,7 +162,17 @@ class EditApp(App):
             reverse=self.table_sort_order == SortOrder.DESC,
         )
 
-    async def on_text_area_changed(self, event: TextArea.Changed) -> None:
+        # Update the labels to indicate sort order
+        for key in self.table.columns:
+            if key == column_key:
+                self.table.columns[
+                    key
+                ].label = f"{key.value} {'↑' if self.table_sort_order == SortOrder.ASC else '↓'}"
+            else:
+                self.table.columns[key].label = str(key.value)
+
+    @on(TextArea.Changed)
+    async def handle_editor_changed(self, event: TextArea.Changed) -> None:
         """Run post change actions on the text.
 
         First, we check for changes compared to the version on disk.
@@ -263,10 +274,13 @@ class EditApp(App):
         yield Footer()
 
     async def on_mount(self):
-        """Set the initial configuration of the app."""
+        """Set the initial configuration of the app.
+
+        Each column name for the table includes extra spaces for sort indicators.
+        """
         self.title = f"Editing {self.filename}"
         for label in ("name", "version", "build", "build_number", "channel"):
-            self.table.add_column(label, key=label)
+            self.table.add_column(label + "  ", key=label)
         self.run_worker(self.update_table(debounce=0), exclusive=True)
 
     def action_quit(self) -> None:
