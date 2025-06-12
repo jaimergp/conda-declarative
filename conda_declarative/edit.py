@@ -28,10 +28,8 @@ from textual.containers import Center, Container, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
-    Checkbox,
     DataTable,
     Footer,
-    Input,
     Label,
     TextArea,
 )
@@ -83,23 +81,17 @@ class EditApp(App):
     ]
 
     DEFAULT_CSS = """
-    #search-area {
-        margin: 1 0 0 0;
-        height: 4;
-        Input {
-            width: 1fr;
-        }
-    }
-    #search-controls {
-        align: left middle;
-        width: 20;
-        margin: 0 0;
-    }
     #output {
         height: 1fr;
     }
     #progress-area {
         height: 1;
+    }
+    #editor-label-area {
+        height: 1;
+    }
+    #editor {
+        height: 1fr;
     }
     """
 
@@ -120,9 +112,7 @@ class EditApp(App):
 
         self.saved_text = text
         self.editor = TextArea.code_editor(text=text, language="toml", id="editor")
-        self.search = Input(placeholder=" ")
-        self.regex = Checkbox(label="regex", compact=True)
-        self.case = Checkbox(label="case sensitive", compact=True)
+        self.editor_label = Label()
         self.progress_label = Label()
 
         self.table = DataTable(id="output", cursor_type="row")
@@ -131,8 +121,8 @@ class EditApp(App):
 
         # Save the solution for the currently saved environment spec
         # and for the pending environment spec
-        self.saved_solution_table = None
-        self.current_solution_table = None
+        self.saved_solution = None
+        self.current_solution = None
 
         self.set_status("done")
 
@@ -208,9 +198,9 @@ class EditApp(App):
             Event that triggered the call
         """
         if event.text_area.text == self.saved_text:
-            self.title = f"Editing {self.filename}"
+            self.editor_label.update(f"Editing {self.filename}")
         else:
-            self.title = f"Editing {self.filename} (Unsaved)"
+            self.editor_label.update(f"Editing {self.filename} (Unsaved)")
 
         self.run_worker(self.update_table(), exclusive=True)
 
@@ -257,9 +247,36 @@ class EditApp(App):
                 self.set_status("done")
                 return
 
-        self.current_solution_table = self.format_table_data(records)
-        self.render_table(self.current_solution_table)
+        self.current_solution = records
+        self.render_table(self.format_table_data(records))
         self.set_status("done")
+
+    def to_table(self, records: Iterable[PrefixRecord]) -> list[tuple[str, ...]]:
+        """Convert a list of prefix records into a list of tuples for the table.
+
+        Parameters
+        ----------
+        records : Iterable[PrefixRecord]
+            Records which should be displayed in the table
+
+        Returns
+        -------
+        list[tuple[str, ...]]
+            A list of rows for different packages; each row is a tuple containing
+            various information to display in the table
+        """
+        rows = []
+        for record in records:
+            rows.append(
+                (
+                    record.name,
+                    record.version,
+                    record.build,
+                    record.build_number,
+                    str(record.channel),
+                )
+            )
+        return rows
 
     def format_table_data(
         self,
@@ -280,55 +297,33 @@ class EditApp(App):
         list[tuple[str | Text, ...]]
             A list of marked up rows to display in the table
         """
-        rows = []
-
-        if self.saved_solution_table is None:
+        if self.saved_solution is None:
             # If this is the first time running the solver, store the solved
             # records for comparison to future solves
-            for record in records:
-                rows.append(
-                    (
-                        record.name,
-                        record.version,
-                        record.build,
-                        record.build_number,
-                        str(record.channel),
-                    )
+            self.saved_solution = records
+            return self.to_table(records)
+
+        # Otherwise, compare the packages in the solution to the current
+        # set of packages
+        saved_rows = set(self.to_table(self.saved_solution))
+        current_solution_rows = set(self.to_table(records))
+
+        rows = []
+
+        # Packages to be added
+        for row in current_solution_rows - saved_rows:
+            rows.append((Text(row[0], style=Style(color="blue", bold=True)), *row[1:]))
+
+        # Packages to be removed
+        for row in saved_rows - current_solution_rows:
+            rows.append(
+                (
+                    Text(row[0], style=Style(color="red", bold=True, strike=True)),
+                    *row[1:],
                 )
-            self.saved_solution_table = rows
-        else:
-            # Otherwise, compare the packages in the solution to the current
-            # set of packages
-            for record in records:
-                row = (
-                    record.name,
-                    record.version,
-                    record.build,
-                    record.build_number,
-                    str(record.channel),
-                )
+            )
 
-                if row in self.saved_solution_table:
-                    # If the package is unchanged, don't mark it up
-                    rows.append(row)
-                else:
-                    # If a new package is added, apply special formatting
-                    rows.append(
-                        (Text(row[0], style=Style(color="blue", bold=True)), *row[1:])
-                    )
-
-            for row in self.saved_solution_table:
-                if row not in rows:
-                    # If any package is being removed, also apply special formatting
-                    rows.append(
-                        (
-                            Text(
-                                row[0], style=Style(color="red", bold=True, strike=True)
-                            ),
-                            *row[1:],
-                        )
-                    )
-
+        rows.extend(current_solution_rows & saved_rows)
         return rows
 
     def compose(self) -> Generator[ComposeResult, None, None]:
@@ -340,13 +335,11 @@ class EditApp(App):
             The widgets that make up the app
         """
         with Horizontal():
-            yield self.editor
             with Vertical():
-                with Horizontal(id="search-area"):
-                    yield self.search
-                    with Vertical(id="search-controls"):
-                        yield self.regex
-                        yield self.case
+                with Horizontal(id="editor-label-area"), Center():
+                    yield self.editor_label
+                yield self.editor
+            with Vertical():
                 yield self.table
                 with Horizontal(id="progress-area"), Center():
                     yield self.progress_label
@@ -357,7 +350,8 @@ class EditApp(App):
 
         Each column name for the table includes extra spaces for sort indicators.
         """
-        self.title = f"Editing {self.filename}"
+        self.editor_label.update(f"Editing {self.filename}")
+
         for label in ("name", "version", "build", "build_number", "channel"):
             self.table.add_column(label + "  ", key=label)
         self.run_worker(self.update_table(debounce=0), exclusive=True)
@@ -385,26 +379,6 @@ class EditApp(App):
         else:
             self.exit()
 
-    def plainify_table_data(
-        self, rows: Iterable[tuple[Text | str, ...]]
-    ) -> list[tuple[str, ...]]:
-        """Convert any `Text` instances to plain strings in table data.
-
-        Parameters
-        ----------
-        rows : Iterable[tuple[Text | str, ...]]
-            Table data to reformat
-
-        Returns
-        -------
-        list[tuple[str, ...]]
-            Plain table data, without any Text instances
-        """
-        plain = []
-        for row in rows:
-            plain.append([str(item) for item in row])
-        return plain
-
     def render_table(self, rows: Iterable[tuple[Text | str, ...]]) -> None:
         """Clear the table and render the given rows.
 
@@ -425,12 +399,10 @@ class EditApp(App):
         self.title = f"Editing {self.filename}"
         self.saved_text = self.editor.text
 
-        # Save the current state of the table; rerender the table with plain
-        # markup now that it has been applied.
-        self.saved_solution_table = self.plainify_table_data(
-            self.current_solution_table
-        )
-        self.render_table(self.saved_solution_table)
+        # Save the current solution; rerender the table with plain
+        # markup now that the file has been saved
+        self.saved_solution = self.current_solution
+        self.render_table(self.to_table(self.current_solution))
 
 
 class QuitModal(ModalScreen):
