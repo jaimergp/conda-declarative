@@ -78,6 +78,7 @@ fmt = "!=10.2.0"
 pytest-mock = "3.12.0.*"
 conda-build = "*"
 pre-commit = "*"
+frozendict = ">=2.4.6,<3"
 
 [tool.pixi.feature.py310.dependencies]
 python = "3.10.*"
