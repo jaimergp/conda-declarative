@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from conda import plugins
+from conda.core.path_actions import Action
 
 from . import cli
 from .state import update_state
@@ -42,3 +43,37 @@ def conda_post_commands() -> Iterable[plugins.CondaPostCommand]:
             "env_update",
         },
     )
+
+
+class UpdateState(Action):
+    """An action that updates the env file when a user modifies an environment.
+
+    This action runs as a post-transaction action.
+    """
+
+    def verify(self):
+        self._verified = True
+
+    def execute(self):
+        update_state(
+            self.target_prefix,
+            self.remove_specs,
+            self.update_specs,
+        )
+
+    def reverse(self):
+        pass
+
+    def cleanup(self):
+        pass
+
+
+class PrintActionPlugin:
+    @plugins.hookimpl
+    def conda_post_transaction_actions(
+        self,
+    ) -> Iterable[plugins.CondaPostTransactionAction]:
+        yield plugins.CondaPostTransactionAction(
+            name="example-post-transaction-action",
+            action=UpdateState,
+        )

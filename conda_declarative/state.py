@@ -1,13 +1,15 @@
 """Code for managing the state of env.yml."""
 
 import pathlib
+from collections.abc import Iterable
 from dataclasses import asdict
 
-from conda.base.context import context, env_name
-from conda.common.serialize import yaml_safe_dump
+from conda.base.context import env_name
+from conda.common.serialize import yaml_safe_dump, yaml_safe_load
 from conda.history import History
 from conda.models.enums import Arch, Platform
-from conda.models.environment import Environment
+from conda.models.environment import Environment, EnvironmentConfig
+from conda.models.match_spec import MatchSpec
 
 
 def get_platform() -> str:
@@ -44,21 +46,45 @@ def get_platform() -> str:
     return f"{platform}-{arch}"
 
 
-def update_state(_command: str) -> None:
+def update_state(
+    prefix: str | None,
+    remove_specs: Iterable[MatchSpec] | None = None,
+    update_specs: Iterable[MatchSpec] | None = None,
+) -> None:
     """Update `conda-meta/env.yml` with the current packages in the environment.
+
+    The requested packages in the environment are read from the existing env file.
+    If no env file exists, the requested packages are read from the history file.
 
     Parameters
     ----------
-    _command : str
-        Conda subcommand invoked by the user that triggered this call
+    prefix : str | None
+        Prefix for which is being modified by a user command
+    remove_specs : Iterable[MatchSpec] | None
+        Packages the user has requested to remove
+    update_specs : Iterable[MatchSpec] | None
+        Packages the user has either requested to add or update
     """
-    prefix = context.target_prefix
-    packages = History(prefix=prefix).get_requested_specs_map()
+    if get_env_file(prefix).exists():
+        current_env = get_environment(prefix)
 
+        packages = {}
+        for pkg in current_env.requested_packages:
+            if pkg not in remove_specs:
+                packages[pkg.name] = pkg
+
+    else:
+        packages = {}
+        for pkg in History(prefix=prefix).get_requested_specs_map().values():
+            if pkg not in remove_specs:
+                packages[pkg.name] = pkg
+
+    packages.update({pkg.name: pkg for pkg in update_specs})
     env_dict = asdict(
         Environment(
             prefix=str(prefix),
             platform=get_platform(),
+            config=EnvironmentConfig(),
             name=env_name(str(prefix)),
             requested_packages=list(packages.values()),
         )
@@ -87,3 +113,10 @@ def get_env_file(prefix: pathlib.Path) -> pathlib.Path:
         Path to the environment file
     """
     return pathlib.Path(prefix) / "conda-meta" / "env.yml"
+
+
+def get_environment(prefix: str) -> Environment | None:
+    if get_env_file(prefix).exists():
+        with open(get_env_file(prefix)) as f:
+            return Environment(**yaml_safe_load(f.read()))
+    return None
