@@ -49,7 +49,7 @@ conda-declarative = { path  = ".", editable = true }
 
 [tool.pixi.feature.build]
 dependencies = { conda-build = "*" }
-tasks = { build = "conda build recipe" }
+tasks = { build = "conda build recipe -c conda-canary/label/dev" }
 
 [tool.pixi.feature.docs.tasks]
 docs = { cmd = "python -m sphinx.cmd.build -M dirhtml . _build", cwd = "docs" }

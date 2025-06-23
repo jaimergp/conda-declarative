@@ -24,7 +24,7 @@ requirements:
     - hatch-vcs >=0.2.0
   run:
     - python >=3.10
-    - conda >=23.9.0
+    - conda >=25.5.1.20  # needs conda-canary/label/dev channel!
     - tomli >=2.0.1
     - tomli-w
 
