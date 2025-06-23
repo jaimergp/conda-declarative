@@ -5640,8 +5640,8 @@ packages:
   timestamp: 1748431533324
 - pypi: .
   name: conda-declarative
-  version: 0.1.dev3+g7ee5f6e.d20250623
-  sha256: 90efd703f233d2bd8eb7d2901289188dc49d1324607e690b8722f0c8a28e5bc1
+  version: 0.1.dev5+g27ff27a
+  sha256: 6bffe73f4c8a7a28dbc5f2f10a21ddb5a3900cd735a448a592421ac993b21d9e
   requires_dist:
   - tomli-w
   - tomli>=2.0.1 ; python_full_version < '3.11'
