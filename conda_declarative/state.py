@@ -4,6 +4,12 @@ import pathlib
 from collections.abc import Iterable
 from dataclasses import asdict
 
+from conda.base.constants import (
+    ChannelPriority,
+    DepsModifier,
+    SatSolverChoice,
+    UpdateModifier,
+)
 from conda.base.context import context, env_name
 from conda.common.serialize import yaml_safe_dump, yaml_safe_load
 from conda.history import History
@@ -47,7 +53,7 @@ def get_platform() -> str:
 
 
 def update_state(
-    prefix: str | None,
+    prefix: str | pathlib.Path | None,
     remove_specs: Iterable[MatchSpec] | None = None,
     update_specs: Iterable[MatchSpec] | None = None,
 ) -> None:
@@ -67,6 +73,15 @@ def update_state(
     update_specs : Iterable[MatchSpec] | None
         Packages the user has either requested to add or update
     """
+    if prefix is None:
+        prefix = pathlib.Path(context.target_prefix)
+
+    if remove_specs is None:
+        remove_specs = []
+
+    if update_specs is None:
+        update_specs = []
+
     packages, config = None, None
 
     current_env = from_env_file(prefix)
@@ -80,7 +95,7 @@ def update_state(
 
     if packages is None:
         packages = {}
-        for pkg in History(prefix=prefix).get_requested_specs_map().values():
+        for pkg in History(prefix=str(prefix)).get_requested_specs_map().values():
             if pkg not in remove_specs:
                 packages[pkg.name] = pkg
 
@@ -103,7 +118,6 @@ def update_state(
 
     packages.update({pkg.name: pkg for pkg in update_specs})
     to_env_file(
-        get_env_path(prefix),
         Environment(
             prefix=str(prefix),
             platform=get_platform(),
@@ -114,12 +128,12 @@ def update_state(
     )
 
 
-def get_env_path(prefix: pathlib.Path) -> pathlib.Path:
+def get_env_path(prefix: str | pathlib.Path) -> pathlib.Path:
     """Get the path to the declarative environment file for the prefix.
 
     Parameters
     ----------
-    prefix : pathlib.Path
+    prefix : str | pathlib.Path
         Prefix to use for the environment file
 
     Returns
@@ -130,7 +144,7 @@ def get_env_path(prefix: pathlib.Path) -> pathlib.Path:
     return pathlib.Path(prefix) / "conda-meta" / "env.yml"
 
 
-def from_env_file(prefix: str) -> Environment | None:
+def from_env_file(prefix: str | pathlib.Path) -> Environment | None:
     """Load a declarative env file into an Environment model.
 
     Note that not all fields of the `Environment` model are supported
@@ -138,7 +152,7 @@ def from_env_file(prefix: str) -> Environment | None:
 
     Parameters
     ----------
-    prefix : str
+    prefix : str | pathlib.Path
         Prefix of the environment
 
     Returns
@@ -146,29 +160,46 @@ def from_env_file(prefix: str) -> Environment | None:
     Environment | None
         The Environment model, if the env file exists; None otherwise
     """
-    if get_env_path(prefix).exists():
-        with open(get_env_path(prefix)) as f:
+    env_path = get_env_path(prefix)
+    if env_path.exists():
+        with open(env_path) as f:
             env_dict = yaml_safe_load(f.read())
 
         # Handle the config and requested_packages separately. They not primitive types
         # and thus not automatically instantiated with the appropriate dataclasses
         if "config" in env_dict:
-            env_dict["config"] = EnvironmentConfig(**env_dict["config"])
+            config = env_dict["config"]
+
+            if "aggressive_update_packages" in config:
+                if isinstance(config["aggressive_update_packages"], tuple):
+                    config["aggressive_update_packages"] = tuple(
+                        map(MatchSpec, config["aggressive_update_packages"])
+                    )
+
+            # Convert the string enum values to their enum object counterparts
+            config["channel_priority"] = ChannelPriority(
+                config.get("channel_priority", ChannelPriority.FLEXIBLE)
+            )
+            config["deps_modifier"] = config.get("deps_modifier", DepsModifier.NOT_SET)
+            config["sat_solver"] = config.get("sat_solver", SatSolverChoice.PYCOSAT)
+            config["update_modifier"] = config.get(
+                "update_modifier", UpdateModifier.UPDATE_SPECS
+            )
+
+            env_dict["config"] = EnvironmentConfig(**config)
         else:
             env_dict["config"] = None
 
-        pkg_specs = []
-        for pkg in env_dict.get("requested_packages", []):
-            pkg_specs.append(MatchSpec(pkg))
-        env_dict["requested_packages"] = pkg_specs
-
+        env_dict["requested_packages"] = list(
+            map(MatchSpec, env_dict.get("requested_packages", []))
+        )
         return Environment(**env_dict)
 
     return None
 
 
-def to_env_file(path: pathlib.Path, environment: Environment):
-    """Write the Environment to the given path.
+def to_env_file(environment: Environment):
+    """Write the Environment to the appropriate path in the environment directory.
 
     Note that not all fields of the `Environment` model are supported. Fields that are
     either primitive types or datacalsses, or primitive containers of primitive types
@@ -177,8 +208,6 @@ def to_env_file(path: pathlib.Path, environment: Environment):
 
     Parameters
     ----------
-    path : pathlib.Path
-        Path to write the environment to
     environment : Environment
         Environment model to serialize and write to disk
     """
@@ -189,5 +218,25 @@ def to_env_file(path: pathlib.Path, environment: Environment):
     env_dict["requested_packages"] = [
         str(spec) for spec in env_dict["requested_packages"]
     ]
+
+    config = env_dict["config"]
+
+    # aggressive_update_packages can either be a bool or a tuple[MatchSpec]
+    if "aggressive_update_packages" in config:
+        if isinstance(config["aggressive_update_packages"], tuple):
+            config["aggressive_update_packages"] = tuple(
+                map(str, config.get("aggressive_update_packages", []))
+            )
+
+    # Convert the enum types to their string values
+    config["channel_priority"] = config.get(
+        "channel_priority", ChannelPriority.FLEXIBLE
+    ).value
+    config["deps_modifier"] = config.get("deps_modifier", DepsModifier.NOT_SET).value
+    config["sat_solver"] = config.get("sat_solver", SatSolverChoice.PYCOSAT).value
+    config["update_modifier"] = config.get(
+        "update_modifier", UpdateModifier.UPDATE_SPECS
+    ).value
+
     with open(get_env_path(environment.prefix), "w") as f:
         yaml_safe_dump(env_dict, f)

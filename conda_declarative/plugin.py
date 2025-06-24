@@ -25,26 +25,6 @@ def conda_subcommands():
     )
 
 
-@plugins.hookimpl
-def conda_post_commands() -> Iterable[plugins.CondaPostCommand]:
-    """Plugin that updates the env state when conda install or create is called."""
-    yield plugins.CondaPostCommand(
-        name="declarative-input-states",
-        action=update_state,
-        run_for={
-            "create",
-            "install",
-            "remove",
-            "uninstall",
-            "update",
-            "upgrade",
-            "env_create",
-            "env_remove",
-            "env_update",
-        },
-    )
-
-
 class UpdateState(Action):
     """An action that updates the env file when a user modifies an environment.
 
@@ -68,12 +48,9 @@ class UpdateState(Action):
         pass
 
 
-class PrintActionPlugin:
-    @plugins.hookimpl
-    def conda_post_transaction_actions(
-        self,
-    ) -> Iterable[plugins.CondaPostTransactionAction]:
-        yield plugins.CondaPostTransactionAction(
-            name="example-post-transaction-action",
-            action=UpdateState,
-        )
+@plugins.hookimpl
+def conda_post_transaction_actions() -> Iterable[plugins.CondaPostTransactionAction]:
+    yield plugins.CondaPostTransactionAction(
+        name="update-declarative-env-post-transaction-action",
+        action=UpdateState,
+    )
