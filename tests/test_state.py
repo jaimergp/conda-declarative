@@ -3,6 +3,7 @@ from unittest import mock
 
 import pytest
 from conda.base.constants import PLATFORMS
+from conda.models.match_spec import MatchSpec
 
 from conda_declarative import state
 
@@ -26,13 +27,14 @@ def test_get_platform():
     [
         ["flask"],
         [],
+        None,
     ],
 )
 def test_update_state(
     python_flask_prefix, conda_cli, prefix_type, update_specs, remove_specs
 ):
     """Test that all types of inputs are handled correctly by update_state."""
-    with mock.patch("conda.common.serialize.yaml_safe_dump") as mock_dump:
+    with mock.patch("conda_declarative.state.yaml_safe_dump") as mock_dump:
         state.update_state(
             prefix_type(python_flask_prefix),
             remove_specs=remove_specs,
@@ -41,7 +43,24 @@ def test_update_state(
 
     mock_dump.assert_called_once()
 
-    env_dict = mock_dump.call_args_list[0]
-    breakpoint()
+    env_dict = mock_dump.call_args.args[0]
 
-    print("foo")
+    # Generate the expected list of packages
+    pkgs = {
+        "python": MatchSpec("python"),
+        "flask": MatchSpec("flask"),
+    }
+    if update_specs is not None:
+        for spec in map(MatchSpec, update_specs):
+            pkgs[spec.name] = spec
+
+    if remove_specs is not None:
+        for spec in map(MatchSpec, remove_specs):
+            if spec.name in pkgs:
+                del pkgs[spec.name]
+
+    assert set(env_dict["requested_packages"]) == set(map(str, pkgs.values()))
+
+    # Internally the prefix should always be coerced to a string
+    assert isinstance(env_dict["prefix"], str)
+    assert env_dict["prefix"] == str(python_flask_prefix)
