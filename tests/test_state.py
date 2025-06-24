@@ -24,14 +24,14 @@ def test_update_state(tmp_env, conda_cli):
         # rather than being the context in which the test is being run
         assert context.target_prefix == str(prefix)
 
-        with open(state.get_env_file(prefix)) as f:
+        with open(state.get_env_path(prefix)) as f:
             requested = yaml_safe_load(f.read())["requested_packages"]
         assert requested == ["python"]
 
         # Add flask to the environment; then check that it has been added
         # correctly to the declarative env file
         conda_cli("install", f"--prefix={str(prefix)}", "flask", "--yes")
-        with open(state.get_env_file(prefix)) as f:
+        with open(state.get_env_path(prefix)) as f:
             requested = yaml_safe_load(f.read())["requested_packages"]
 
         assert sorted(requested) == sorted(["flask", "python"])
