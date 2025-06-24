@@ -42,7 +42,6 @@ def test_update_state(
         )
 
     mock_dump.assert_called_once()
-
     env_dict = mock_dump.call_args.args[0]
 
     # Generate the expected list of packages
@@ -53,12 +52,12 @@ def test_update_state(
     if update_specs is not None:
         for spec in map(MatchSpec, update_specs):
             pkgs[spec.name] = spec
-
     if remove_specs is not None:
         for spec in map(MatchSpec, remove_specs):
             if spec.name in pkgs:
                 del pkgs[spec.name]
 
+    # The environment should have the expected packages
     assert set(env_dict["requested_packages"]) == set(map(str, pkgs.values()))
 
     # Internally the prefix should always be coerced to a string

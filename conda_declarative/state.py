@@ -104,7 +104,21 @@ def update_state(
             del packages[pkg.name]
 
     if config is None:
-        config = env_config_from_context()
+        config = EnvironmentConfig(
+            aggressive_update_packages=context.aggressive_update_packages,
+            channel_priority=context.channel_priority,
+            channels=context.channels,
+            channel_settings=context.channel_settings,
+            deps_modifier=context.deps_modifier,
+            disallowed_packages=context.disallowed_packages,
+            pinned_packages=context.pinned_packages,
+            repodata_fns=context.repodata_fns,
+            sat_solver=context.sat_solver,
+            solver=context.solver,
+            track_features=context.track_features,
+            update_modifier=context.update_modifier,
+            use_only_tar_bz2=context.use_only_tar_bz2,
+        )
 
     to_env_file(
         Environment(
@@ -234,21 +248,3 @@ def to_env_file(environment: Environment):
 
     with open(get_env_path(environment.prefix), "w") as f:
         yaml_safe_dump(env_dict, f)
-
-
-def env_config_from_context() -> EnvironmentConfig:
-    return EnvironmentConfig(
-        aggressive_update_packages=context.aggressive_update_packages,
-        channel_priority=context.channel_priority,
-        channels=context.channels,
-        channel_settings=context.channel_settings,
-        deps_modifier=context.deps_modifier,
-        disallowed_packages=context.disallowed_packages,
-        pinned_packages=context.pinned_packages,
-        repodata_fns=context.repodata_fns,
-        sat_solver=context.sat_solver,
-        solver=context.solver,
-        track_features=context.track_features,
-        update_modifier=context.update_modifier,
-        use_only_tar_bz2=context.use_only_tar_bz2,
-    )

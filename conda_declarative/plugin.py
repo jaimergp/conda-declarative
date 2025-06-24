@@ -6,7 +6,7 @@ from conda import plugins
 from conda.core.path_actions import Action
 
 from . import cli
-from .state import update_state
+from .state import update_state, get_env_path
 
 
 @plugins.hookimpl
@@ -31,10 +31,19 @@ class UpdateState(Action):
     This action runs as a post-transaction action.
     """
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.original_env = None
+
     def verify(self):
         self._verified = True
 
     def execute(self):
+        """Update the declarative env file with the current environment."""
+        if get_env_path(self.target_prefix).is_file():
+            with open(get_env_path(self.target_prefix)) as f:
+                self.original_env = f.read()
+
         update_state(
             self.target_prefix,
             self.remove_specs,
@@ -42,7 +51,17 @@ class UpdateState(Action):
         )
 
     def reverse(self):
-        pass
+        """Reverse the update state action.
+
+        If there was no declarative env file before this action, delete the one that was
+        created. Otherwise, write the content of the original environment back to where
+        it was previously.
+        """
+        if self.original_env is None:
+            get_env_path(self.target_prefix).unlink(missing_ok=True)
+        else:
+            with open(get_env_path(self.target_prefix), "w") as f:
+                f.write(self.original_env)
 
     def cleanup(self):
         pass
