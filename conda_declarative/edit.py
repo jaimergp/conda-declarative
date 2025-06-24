@@ -110,7 +110,7 @@ class EditApp(App):
         with open(self.filename) as f:
             text = f.read()
 
-        self.saved_text = text
+        self.initial_text = text
         self.editor = TextArea.code_editor(text=text, language="toml", id="editor")
         self.editor_label = Label()
         self.progress_label = Label()
@@ -121,7 +121,7 @@ class EditApp(App):
 
         # Save the solution for the currently saved environment spec
         # and for the pending environment spec
-        self.saved_solution = None
+        self.initial_solution = None
         self.current_solution = None
 
         self.set_status("done")
@@ -197,10 +197,10 @@ class EditApp(App):
         event : TextArea.Changed
             Event that triggered the call
         """
-        if event.text_area.text == self.saved_text:
+        if event.text_area.text == self.initial_text:
             self.editor_label.update(f"Editing {self.filename}")
         else:
-            self.editor_label.update(f"Editing {self.filename} (Unsaved)")
+            self.editor_label.update(f"Editing {self.filename} (Modified)")
 
         self.run_worker(self.update_table(), exclusive=True)
 
@@ -297,15 +297,15 @@ class EditApp(App):
         list[tuple[str | Text, ...]]
             A list of marked up rows to display in the table
         """
-        if self.saved_solution is None:
+        if self.initial_solution is None:
             # If this is the first time running the solver, store the solved
             # records for comparison to future solves
-            self.saved_solution = records
+            self.initial_solution = records
             return self.to_table(records)
 
         # Otherwise, compare the packages in the solution to the current
         # set of packages
-        saved_rows = set(self.to_table(self.saved_solution))
+        saved_rows = set(self.to_table(self.initial_solution))
         current_solution_rows = set(self.to_table(records))
 
         rows = []
@@ -361,7 +361,7 @@ class EditApp(App):
 
         If the file hasn't been saved, ask to save it first.
         """
-        if self.editor.text != self.saved_text:
+        if self.editor.text != self.initial_text:
             # Ask about quitting without saving
             def check_should_save(should_save: bool | None) -> None:
                 """Optionally save before quitting based on the QuitModal return result.
@@ -397,12 +397,6 @@ class EditApp(App):
             f.write(self.editor.text)
 
         self.title = f"Editing {self.filename}"
-        self.saved_text = self.editor.text
-
-        # Save the current solution; rerender the table with plain
-        # markup now that the file has been saved
-        self.saved_solution = self.current_solution
-        self.render_table(self.to_table(self.current_solution))
 
 
 class QuitModal(ModalScreen):
@@ -497,6 +491,10 @@ def read_manifest(prefix: PathType) -> dict[str, Any]:
 
 def update_manifest(prefix: PathType) -> tuple[str, str]:
     """Update the manifest for the given prefix with the user-requested packages.
+
+    If no manifest is found, return the default manifest template populated
+    with requirements from the prefix history's user-requested specs. A new
+    manifest file will be created in this case.
 
     Parameters
     ----------
