@@ -1,4 +1,4 @@
-"""`conda edit` subcommand."""
+"""`edit` and `apply` subcommands for CLI."""
 
 from __future__ import annotations
 
