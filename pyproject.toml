@@ -14,7 +14,6 @@ classifiers = [
   "License :: OSI Approved :: BSD License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
@@ -24,8 +23,11 @@ classifiers = [
 requires-python = ">=3.10"
 dependencies = [
   # "conda >=23.9.0",
+  "boltons",
   "tomli>=2.0.1;python_version<'3.11'",
   "tomli-w",
+  "textual>=3.3.0",
+  "textual[syntax]",
 ]
 dynamic = ["version"]
 
@@ -43,13 +45,15 @@ platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
 python = ">=3.10"
 conda = ">=23.9"
 tomli-w = "*"
+boltons = ">=24.0.0,<25"
+rich = ">=14.0.0,<15"
 
 [tool.pixi.pypi-dependencies]
 conda-declarative = { path  = ".", editable = true }
 
 [tool.pixi.feature.build]
 dependencies = { conda-build = "*" }
-tasks = { build = "conda build recipe" }
+tasks = { build = "conda build recipe --override-channels --channel conda-forge" }
 
 [tool.pixi.feature.docs.tasks]
 docs = { cmd = "python -m sphinx.cmd.build -M dirhtml . _build", cwd = "docs" }
@@ -113,3 +117,70 @@ exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:"]
 [tool.coverage.run]
 source = ["conda_declarative/", "tests/"]
 omit = ["conda_declarative/__init__.py"]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    # pycodestyle
+    "E",
+    "W",
+    # Pyflakes
+    "F",
+    # pyupgrade
+    "UP",
+    # flake8-bugbear
+    "B",
+    # flake8-simplify
+    "SIM",
+    # isort
+    "I",
+    # pep8 naming
+    "N",
+    # pydocstyle
+    "D",
+    # annotations
+    "ANN",
+    # debugger
+    "T10",
+    # flake8-pytest
+    "PT",
+    # flake8-return
+    "RET",
+    # flake8-unused-arguments
+    "ARG",
+    # flake8-fixme
+    "FIX",
+    # flake8-eradicate
+    "ERA",
+    # pandas-vet
+    "PD",
+    # numpy-specific rules
+    "NPY",
+]
+ignore = [
+    "ANN002", # Missing type annotation for `*args`
+    "ANN003", # Missing type annotation for `**kwargs`
+    "ANN201", # Missing return type annotation for public function (makes no sense for NoneType return types...)
+    "ANN204", # Missing return type annotation for special method
+    "B905", # zip() without an explicit strict=; incompatible with python<3.12
+    "D100", # Missing docstring in public module
+    "D104", # Missing docstring in public package
+    "D105", # Missing docstring in magic method
+    "D107", # Missing docstring in __init__
+    "D203", # 1 blank line before after class docstring
+    "D204", # 1 blank line required after class docstring
+    "D206", # Docstrings should be indented with spaces; unnecessary when running ruff-format
+    "D211", # No blank line before class
+    "D213", # Multiline summary second line
+    "D413", # 1 black line after parameters
+    "E501", # Line length too long; unnecessary when running ruff-format
+    "PD901", # Avoid using 'df' for pandas dataframes. Perfectly fine in functions with limited scope
+    "SIM108", # Simplify if/else to one line; not always clearer
+    "W191", # Indentation contains tabs; unnecessary when running ruff-format
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"test_*.py" = ["ANN001"]
