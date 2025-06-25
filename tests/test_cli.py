@@ -6,8 +6,15 @@ from conda.common.serialize import yaml_safe_load
 from conda_declarative import state
 
 
-@pytest.mark.parametrize("command", ("apply", "edit"))
+@pytest.mark.parametrize(
+    "command",
+    [
+        "apply",
+        "edit",
+    ],
+)
 def test_cli(monkeypatch, conda_cli, command):
+    """Test that the new subcommands work."""
     monkeypatch.setattr(sys, "argv", ["conda", *sys.argv[1:]])
     out, err, _ = conda_cli(command, "-h", raises=SystemExit)
     assert not err

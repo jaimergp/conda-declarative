@@ -4,13 +4,18 @@ from collections.abc import Iterable
 
 from conda import plugins
 from conda.core.path_actions import Action
+from conda.plugins.types import (
+    CondaReporterBackend,
+)
 
 from . import cli
-from .state import update_state, get_env_path
+from .renderers import TuiReporterRenderer
+from .state import get_env_path, update_state
 
 
 @plugins.hookimpl
 def conda_subcommands():
+    """Implement the new conda subcommands."""
     yield plugins.CondaSubcommand(
         name="edit",
         summary="Edit the manifest file of the given environment.",
@@ -36,6 +41,10 @@ class UpdateState(Action):
         self.original_env = None
 
     def verify(self):
+        """Carry out pre-execution verification.
+
+        No pre-execution verification is needed, so we set the verified state by default.
+        """
         self._verified = True
 
     def execute(self):
@@ -64,12 +73,33 @@ class UpdateState(Action):
                 f.write(self.original_env)
 
     def cleanup(self):
+        """Clean up after the action runs.
+
+        No cleanup is needed here, so this is just a no-op.
+        """
         pass
 
 
 @plugins.hookimpl
 def conda_post_transaction_actions() -> Iterable[plugins.CondaPostTransactionAction]:
+    """Implement the post-transaction action for updating declarative envs state.
+
+    Returns
+    -------
+    Iterable[plugins.CondaPostTransactionAction]
+        Post-transaction action plugin
+    """
     yield plugins.CondaPostTransactionAction(
         name="update-declarative-env-post-transaction-action",
         action=UpdateState,
+    )
+
+
+@plugins.hookimpl
+def conda_reporter_backends():
+    """Implement the TUI reporter for conda."""
+    yield CondaReporterBackend(
+        name="tui",
+        description="Reporter backend for the TUI",
+        renderer=TuiReporterRenderer,
     )

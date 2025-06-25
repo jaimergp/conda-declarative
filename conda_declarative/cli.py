@@ -1,6 +1,4 @@
-"""
-conda pip subcommand for CLI
-"""
+"""`edit` and `apply` subcommands for CLI."""
 
 from __future__ import annotations
 
@@ -8,14 +6,21 @@ import argparse
 from pathlib import Path
 
 from conda.base.context import context
-from conda.exceptions import DryRunExit
 from conda.cli.conda_argparse import add_parser_help
 from conda.cli.helpers import add_parser_prefix, add_parser_verbose
+from conda.exceptions import DryRunExit
 
 from .exceptions import LockOnlyExit
 
 
 def configure_parser_edit(parser: argparse.ArgumentParser) -> None:
+    """Configure the command line argument parser for the `conda edit` subcommand.
+
+    Parameters
+    ----------
+    parser : argparse.ArgumentParser
+        Parser which is to be configured
+    """
     parser.prog = "conda edit"
     add_parser_help(parser)
     add_parser_prefix(parser)
@@ -33,6 +38,18 @@ def configure_parser_edit(parser: argparse.ArgumentParser) -> None:
 
 
 def execute_edit(args: argparse.Namespace) -> int:
+    """Read the existing manifest; open the editor app; then apply the user's changes.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Arguments passed to the `conda edit` subcommand
+
+    Returns
+    -------
+    int
+        Return value of the process; 0 means success
+    """
     from .constants import CONDA_MANIFEST_FILE
     from .edit import run_editor, update_manifest
 
@@ -45,31 +62,19 @@ def execute_edit(args: argparse.Namespace) -> int:
     if manifest_path.is_file():
         old = manifest_path.read_text()
     else:
-        _, old = update_manifest(prefix)
+        old, _ = update_manifest(prefix)
 
-    if not context.quiet:
-        print("Opening editor...", end="", flush=True)
-
-    process = run_editor(prefix)
-
-    if not context.quiet:
-        print(" done.")
-    new = manifest_path.read_text()
-
-    if not context.quiet:
-        if old == new:
-            print("No changes detected.")
-        else:
-            from difflib import unified_diff
-
-            print("Detected changes:")
-            print(*unified_diff(old.splitlines(), new.splitlines()), sep="\n")
+    run_editor(
+        prefix,
+        context.subdirs,
+    )
 
     if not args.apply:  # nothing else to do
-        return process.returncode
+        return 0
 
     if not context.quiet:
         print("Applying changes...")
+
     return execute_apply(
         argparse.Namespace(
             dry_run=False,
@@ -80,6 +85,13 @@ def execute_edit(args: argparse.Namespace) -> int:
 
 
 def configure_parser_apply(parser: argparse.ArgumentParser) -> None:
+    """Configure the argument parser for the `conda apply` subcommand.
+
+    Parameters
+    ----------
+    parser : argparse.ArgumentParser
+        Parser which is to be configured
+    """
     parser.prog = "conda apply"
     add_parser_help(parser)
     add_parser_prefix(parser)
@@ -93,23 +105,36 @@ def configure_parser_apply(parser: argparse.ArgumentParser) -> None:
 
 
 def execute_apply(args: argparse.Namespace) -> int:
-    from .edit import read_manifest
+    """Read the current manifest; solve the environment; and apply filesystem changes.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Arguments passed into the `conda apply` subcommand
+
+    Returns
+    -------
+    int
+        Return value of the process; 0 means success
+    """
     from .apply import link, lock, solve
+    from .edit import read_manifest
 
     manifest = read_manifest(context.target_prefix)
     records = solve(
         prefix=context.target_prefix,
-        channels=manifest.channels,  # TODO: merge with context?
-        subdirs=context.subdirs,  # TODO: check if supported
-        specs=manifest.requirements,
+        channels=manifest.get("channels", []),
+        subdirs=context.subdirs,
+        specs=manifest.get("requirements", []),
     )
     if not context.quiet:
         print(*records, sep="\n")  # This should be a diff'd report
     if context.dry_run:
         raise DryRunExit()
-    lockdir = lock(records, prefix=context.target_prefix)
-    if args.lock_only:
-        raise LockOnlyExit()
-    link(lockdir)
 
+    if args.lock_only:
+        lock(prefix=context.target_prefix, records=records)
+        raise LockOnlyExit()
+
+    link(prefix=context.target_prefix, records=records, args=args)
     return 0
