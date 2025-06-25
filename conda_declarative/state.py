@@ -177,11 +177,12 @@ def from_env_file(prefix: str | pathlib.Path) -> Environment | None:
         if "config" in env_dict:
             config = env_dict["config"]
 
-            if "aggressive_update_packages" in config:
-                if isinstance(config["aggressive_update_packages"], (tuple, list)):
-                    config["aggressive_update_packages"] = tuple(
-                        map(MatchSpec, config["aggressive_update_packages"])
-                    )
+            if "aggressive_update_packages" in config and isinstance(
+                config["aggressive_update_packages"], tuple | list
+            ):
+                config["aggressive_update_packages"] = tuple(
+                    map(MatchSpec, config["aggressive_update_packages"])
+                )
 
             # Convert the string values to their enum type counterparts
             config["channel_priority"] = ChannelPriority(
@@ -230,11 +231,12 @@ def to_env_file(environment: Environment):
     config = env_dict["config"]
 
     # aggressive_update_packages can either be a bool or a tuple[MatchSpec]
-    if "aggressive_update_packages" in config:
-        if isinstance(config["aggressive_update_packages"], tuple):
-            config["aggressive_update_packages"] = tuple(
-                map(str, config.get("aggressive_update_packages", []))
-            )
+    if "aggressive_update_packages" in config and isinstance(
+        config["aggressive_update_packages"], tuple | list
+    ):
+        config["aggressive_update_packages"] = tuple(
+            map(str, config.get("aggressive_update_packages", []))
+        )
 
     # Convert the enum types to their string values
     config["channel_priority"] = config.get(

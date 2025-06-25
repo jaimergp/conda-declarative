@@ -9,7 +9,14 @@ pytest_plugins = ("conda.testing.fixtures",)
 
 
 @pytest.fixture
-def python_prefix(tmp_env, conda_cli):
+def python_prefix(tmp_env):
+    """Create a temp environment with python.
+
+    The context target prefix is also mocked to point to the temp prefix rather than
+    whatever conda environment prefix the test is being run in.
+
+    Additionally, check that the declarative env file contains python as well.
+    """
     with (
         tmp_env("python") as prefix,
         mock.patch("conda.base.context.determine_target_prefix") as mock_target_prefix,
@@ -23,7 +30,14 @@ def python_prefix(tmp_env, conda_cli):
 
 
 @pytest.fixture
-def python_flask_prefix(tmp_env, conda_cli):
+def python_flask_prefix(tmp_env):
+    """Create a temp environment with python and flask.
+
+    The context target prefix is also mocked to point to the temp prefix rather than
+    whatever conda environment prefix the test is being run in.
+
+    Additionally, check that the declarative env file contains python and flask as well.
+    """
     with (
         tmp_env("python", "flask") as prefix,
         mock.patch("conda.base.context.determine_target_prefix") as mock_target_prefix,

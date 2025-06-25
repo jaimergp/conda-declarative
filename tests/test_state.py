@@ -30,10 +30,22 @@ def test_get_platform():
         None,
     ],
 )
+@pytest.mark.parametrize("remove_initial_declarative_env_file", [True, False])
 def test_update_state(
-    python_flask_prefix, conda_cli, prefix_type, update_specs, remove_specs
+    python_flask_prefix,
+    prefix_type,
+    update_specs,
+    remove_specs,
+    remove_initial_declarative_env_file,
 ):
-    """Test that all types of inputs are handled correctly by update_state."""
+    """Test that all types of inputs are handled correctly by update_state.
+
+    Also test that starting from an environment that _doesn't_ have a declarative env
+    file also works.
+    """
+    if remove_initial_declarative_env_file:
+        state.get_env_path(python_flask_prefix).unlink()
+
     with mock.patch("conda_declarative.state.yaml_safe_dump") as mock_dump:
         state.update_state(
             prefix_type(python_flask_prefix),
