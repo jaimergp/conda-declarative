@@ -47,9 +47,13 @@ tomli-w = "*"
 conda = { version = ">=25.5.1.24", channel = "conda-canary/label/dev" }
 boltons = ">=24.0.0,<25"
 rich = ">=14.0.0,<15"
+conda-spawn = "*" # not a requirement, but useful for local experimentation
 
 [tool.pixi.pypi-dependencies]
 conda-declarative = { path  = ".", editable = true }
+
+[tool.pixi.tasks]
+conda = "python -m conda"
 
 [tool.pixi.feature.build]
 dependencies = { conda-build = "*" }
