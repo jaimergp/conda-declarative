@@ -53,7 +53,7 @@ conda-declarative = { path  = ".", editable = true }
 
 [tool.pixi.feature.build]
 dependencies = { conda-build = "*" }
-tasks = { build = "conda build recipe -c conda-canary/label/dev" }
+tasks = { build = "conda build recipe --override-channels -c conda-canary/label/dev -c conda-forge" }
 
 [tool.pixi.feature.docs.tasks]
 docs = { cmd = "python -m sphinx.cmd.build -M dirhtml . _build", cwd = "docs" }
