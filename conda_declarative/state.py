@@ -13,43 +13,8 @@ from conda.base.constants import (
 from conda.base.context import context, env_name
 from conda.common.serialize import yaml_safe_dump, yaml_safe_load
 from conda.history import History
-from conda.models.enums import Arch, Platform
 from conda.models.environment import Environment, EnvironmentConfig
 from conda.models.match_spec import MatchSpec
-
-
-def get_platform() -> str:
-    """Get the current platform.
-
-    Right now there's no way to get the current platform, so we roll our own function
-    to do this here. Yes, you can use `conda.models.enums.Platform.from_sys`, but the
-    values of this enum are not valid to pass to `conda.models.environment.Environment`,
-    which must be one of `conda.base.constants.PLATFORMS`.
-
-    Returns
-    -------
-    str
-        Currently running platform; one of conda.base.constants.PLATFORMS
-    """
-    arch_enum = Arch.from_sys()
-    match arch_enum:
-        case Arch.x86:
-            arch = "32"
-        case Arch.x86_64:
-            arch = "64"
-        case _:
-            arch = arch_enum.value
-
-    platform_enum = Platform.from_sys()
-    match platform_enum:
-        case Platform.osx:
-            platform = "osx"
-        case Platform.win:
-            platform = "win"
-        case _:
-            platform = platform_enum.value
-
-    return f"{platform}-{arch}"
 
 
 def update_state(
@@ -123,7 +88,7 @@ def update_state(
     to_env_file(
         Environment(
             prefix=str(prefix),
-            platform=get_platform(),
+            platform=context.subdir,
             config=config,
             name=env_name(str(prefix)),
             requested_packages=list(packages.values()),

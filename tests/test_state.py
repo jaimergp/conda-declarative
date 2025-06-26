@@ -2,15 +2,9 @@ import pathlib
 from unittest import mock
 
 import pytest
-from conda.base.constants import PLATFORMS
 from conda.models.match_spec import MatchSpec
 
 from conda_declarative import state
-
-
-def test_get_platform():
-    """Test that the current platform is one of the valid platforms."""
-    assert state.get_platform() in PLATFORMS
 
 
 @pytest.mark.parametrize(
