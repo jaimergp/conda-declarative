@@ -113,16 +113,24 @@ class TuiReporterRenderer(ReporterRendererBase):
         """
         return TuiProgressBar()
 
-    def spinner(self, message, failed_message) -> SpinnerBase:
+    def spinner(self, message: str, failed_message: str) -> SpinnerBase:
+        """Return a spinner for the TUI."""
         return TuiSpinner(message, failed_message)
 
-    def prompt(self, message, choices, default) -> str:
-        pass
+    def prompt(
+        self,
+        message: str = "Proceed",
+        choices: tuple[str, str] = ("yes", "no"),
+        default: str = "yes",
+    ) -> str:
+        """Allow for defining an implementation of a "yes/no" confirmation function."""
 
 
 class TuiSpinner(SpinnerBase):
+    """A simple spinner."""
+
     def __enter__(self, *args, **kwargs):
         return
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, *args, **kwargs):
         return
