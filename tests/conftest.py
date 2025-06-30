@@ -1,7 +1,11 @@
 from unittest import mock
 
 import pytest
-from conda.common.serialize import yaml_safe_load
+
+try:
+    from tomllib import loads
+except ImportError:
+    from tomli import loads
 
 from conda_declarative import state
 
@@ -24,7 +28,7 @@ def python_prefix(tmp_env):
         mock_target_prefix.return_value = str(prefix)
 
         with open(state.get_env_path(prefix)) as f:
-            requested = yaml_safe_load(f.read())["requested_packages"]
+            requested = loads(f.read())["requested_packages"]
         assert requested == ["python"]
         yield prefix
 
@@ -45,7 +49,7 @@ def python_flask_prefix(tmp_env):
         mock_target_prefix.return_value = str(prefix)
 
         with open(state.get_env_path(prefix)) as f:
-            requested = yaml_safe_load(f.read())["requested_packages"]
+            requested = loads(f.read())["requested_packages"]
 
         assert set(requested) == set(["python", "flask"])
         yield prefix

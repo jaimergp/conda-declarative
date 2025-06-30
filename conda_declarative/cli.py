@@ -51,18 +51,13 @@ def execute_edit(args: argparse.Namespace) -> int:
         Return value of the process; 0 means success
     """
     from .constants import CONDA_MANIFEST_FILE
-    from .edit import run_editor, update_manifest
+    from .edit import run_editor
 
     prefix = context.target_prefix
     manifest_path = Path(prefix, CONDA_MANIFEST_FILE)
     if args.show:
         print(manifest_path)
         return 0
-
-    if manifest_path.is_file():
-        old = manifest_path.read_text()
-    else:
-        old, _ = update_manifest(prefix)
 
     run_editor(
         prefix,
@@ -118,14 +113,23 @@ def execute_apply(args: argparse.Namespace) -> int:
         Return value of the process; 0 means success
     """
     from .apply import link, lock, solve
-    from .edit import read_manifest
+    from .state import from_env_file
 
-    manifest = read_manifest(context.target_prefix)
+    env = from_env_file(str(context.target_prefix))
+
+    if env is not None:
+        requested_packages = env.requested_packages
+        if env.config is not None:
+            channels = env.config.channels
+    else:
+        channels = []
+        requested_packages = []
+
     records = solve(
         prefix=context.target_prefix,
-        channels=manifest.get("channels", []),
+        channels=channels,
         subdirs=context.subdirs,
-        specs=manifest.get("requirements", []),
+        specs=requested_packages,
     )
     if not context.quiet:
         print(*records, sep="\n")  # This should be a diff'd report

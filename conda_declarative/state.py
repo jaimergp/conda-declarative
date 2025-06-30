@@ -4,17 +4,25 @@ import pathlib
 from collections.abc import Iterable
 from dataclasses import asdict
 
+try:
+    from tomllib import loads
+except ImportError:
+    from tomli import loads
+
 from conda.base.constants import (
+    DEFAULT_SOLVER,
     ChannelPriority,
     DepsModifier,
     SatSolverChoice,
     UpdateModifier,
 )
 from conda.base.context import context, env_name
-from conda.common.serialize import yaml_safe_dump, yaml_safe_load
 from conda.history import History
 from conda.models.environment import Environment, EnvironmentConfig
 from conda.models.match_spec import MatchSpec
+from tomli_w import dump
+
+from .constants import CONDA_MANIFEST_FILE
 
 
 def update_state(
@@ -109,7 +117,7 @@ def get_env_path(prefix: str | pathlib.Path) -> pathlib.Path:
     pathlib.Path
         Path to the environment file
     """
-    return pathlib.Path(prefix) / "conda-meta" / "env.yml"
+    return pathlib.Path(prefix) / CONDA_MANIFEST_FILE
 
 
 def from_env_file(prefix: str | pathlib.Path) -> Environment | None:
@@ -131,43 +139,7 @@ def from_env_file(prefix: str | pathlib.Path) -> Environment | None:
     env_path = get_env_path(prefix)
     if env_path.exists():
         with open(env_path) as f:
-            env_dict = yaml_safe_load(f.read())
-
-        # Coerce any non-primitive types to primitive types so they
-        # can be (de)serialized
-        env_dict["requested_packages"] = list(
-            map(MatchSpec, env_dict.get("requested_packages", []))
-        )
-
-        if "config" in env_dict:
-            config = env_dict["config"]
-
-            if "aggressive_update_packages" in config and isinstance(
-                config["aggressive_update_packages"], tuple | list
-            ):
-                config["aggressive_update_packages"] = tuple(
-                    map(MatchSpec, config["aggressive_update_packages"])
-                )
-
-            # Convert the string values to their enum type counterparts
-            config["channel_priority"] = ChannelPriority(
-                config.get("channel_priority", ChannelPriority.FLEXIBLE)
-            )
-            config["deps_modifier"] = DepsModifier(
-                config.get("deps_modifier", DepsModifier.NOT_SET)
-            )
-            config["sat_solver"] = SatSolverChoice(
-                config.get("sat_solver", SatSolverChoice.PYCOSAT)
-            )
-            config["update_modifier"] = UpdateModifier(
-                config.get("update_modifier", UpdateModifier.UPDATE_SPECS)
-            )
-
-            env_dict["config"] = EnvironmentConfig(**config)
-        else:
-            env_dict["config"] = None
-
-        return Environment(**env_dict)
+            return dict_to_env(loads(f.read()))
 
     return None
 
@@ -185,6 +157,89 @@ def to_env_file(environment: Environment):
     environment : Environment
         Environment model to serialize and write to disk
     """
+    with open(get_env_path(environment.prefix), "wb") as f:
+        dump(env_to_dict(environment), f)
+
+
+def dict_to_env(env_dict: dict) -> Environment:
+    """Convert a serialized dict of an environment to an Environment.
+
+    Parameters
+    ----------
+    env_dict : dict
+        Serialized dict of an conda.models.environment.Environment containing only
+        primitive types
+
+    Returns
+    -------
+    Environment
+        Instance of the Environment
+    """
+    # Coerce any non-primitive types to primitive types so they
+    # can be (de)serialized
+    env_dict["requested_packages"] = list(
+        map(MatchSpec, env_dict.get("requested_packages", []))
+    )
+
+    # NoneType can't be serialized to TOML
+    if env_dict.get("name") is None:
+        env_dict["name"] = ""
+
+    if "config" in env_dict:
+        config = env_dict["config"]
+
+        if "aggressive_update_packages" in config:
+            if isinstance(config["aggressive_update_packages"], tuple | list):
+                config["aggressive_update_packages"] = tuple(
+                    map(MatchSpec, config["aggressive_update_packages"])
+                )
+            elif config["aggressive_update_packages"] is None:
+                config["aggressive_update_packages"] = ()
+
+        # Convert the string values to their enum type counterparts
+        config["channel_priority"] = ChannelPriority(
+            config.get("channel_priority", ChannelPriority.FLEXIBLE)
+        )
+        config["deps_modifier"] = DepsModifier(
+            config.get("deps_modifier", DepsModifier.NOT_SET)
+        )
+        config["sat_solver"] = SatSolverChoice(
+            config.get("sat_solver", SatSolverChoice.PYCOSAT)
+        )
+        config["update_modifier"] = UpdateModifier(
+            config.get("update_modifier", UpdateModifier.UPDATE_SPECS)
+        )
+
+        # `NoneType` can't be serialized to TOML, so we just use the "default"
+        # value of use_only_tar_bz2 here. By default this is `None`, but it is
+        # treated everywhere in `conda` as a boolean, so we just coerce to False
+        # here.
+        config["use_only_tar_bz2"] = (
+            False
+            if config.get("use_only_tar_bz2") is None
+            else config["use_only_tar_bz2"]
+        )
+
+        env_dict["config"] = EnvironmentConfig(**config)
+    else:
+        env_dict["config"] = None
+
+    return Environment(**env_dict)
+
+
+def env_to_dict(environment: Environment) -> dict:
+    """Handle conversion of an Environment into a dict that can be dumped to a file.
+
+    Parameters
+    ----------
+    environment : Environment
+        Environment to serialize into a dict
+
+    Returns
+    -------
+    dict
+        Dictionary containing all the fields of the Environment as primitive types
+    """
     env_dict = asdict(environment)
 
     # Coerce any non-primitive types to primitive types so they
@@ -193,15 +248,20 @@ def to_env_file(environment: Environment):
         map(str, env_dict.get("requested_packages", []))
     )
 
+    # NoneType can't be serialized to TOML
+    if env_dict.get("name") is None:
+        env_dict["name"] = ""
+
     config = env_dict["config"]
 
     # aggressive_update_packages can either be a bool or a tuple[MatchSpec]
-    if "aggressive_update_packages" in config and isinstance(
-        config["aggressive_update_packages"], tuple | list
-    ):
-        config["aggressive_update_packages"] = tuple(
-            map(str, config.get("aggressive_update_packages", ()))
-        )
+    if "aggressive_update_packages" in config:
+        if isinstance(config["aggressive_update_packages"], tuple | list):
+            config["aggressive_update_packages"] = tuple(
+                map(str, config.get("aggressive_update_packages", ()))
+            )
+        elif config["aggressive_update_packages"] is None:
+            config["aggressive_update_packages"] = ()
 
     # Convert the enum types to their string values
     config["channel_priority"] = config.get(
@@ -212,6 +272,14 @@ def to_env_file(environment: Environment):
     config["update_modifier"] = config.get(
         "update_modifier", UpdateModifier.UPDATE_SPECS
     ).value
+    config["solver"] = config.get("solver", DEFAULT_SOLVER)
 
-    with open(get_env_path(environment.prefix), "w") as f:
-        yaml_safe_dump(env_dict, f)
+    # `NoneType` can't be serialized to TOML, so we just use the "default"
+    # value of use_only_tar_bz2 here. By default this is `None`, but it is
+    # treated everywhere in `conda` as a boolean, so we just coerce to False
+    # here.
+    config["use_only_tar_bz2"] = (
+        False if config.get("use_only_tar_bz2") is None else config["use_only_tar_bz2"]
+    )
+
+    return env_dict

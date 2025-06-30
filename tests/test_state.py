@@ -40,7 +40,7 @@ def test_update_state(
     if remove_initial_declarative_env_file:
         state.get_env_path(python_flask_prefix).unlink()
 
-    with mock.patch("conda_declarative.state.yaml_safe_dump") as mock_dump:
+    with mock.patch("conda_declarative.state.dump") as mock_dump:
         state.update_state(
             prefix_type(python_flask_prefix),
             remove_specs=remove_specs,
