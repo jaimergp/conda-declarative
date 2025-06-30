@@ -176,7 +176,7 @@ def to_env_file(environment: Environment):
     """Write the Environment to the appropriate path in the environment directory.
 
     Note that not all fields of the `Environment` model are supported. Fields that are
-    either primitive types or datacalsses, or primitive containers of primitive types
+    either primitive types or dataclasses, or primitive containers of primitive types
     or dataclasses are handled automatically. Other fields are not, with the exception
     of the `requested_packages`, which is the only non-primitive field used here.
 
