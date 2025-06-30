@@ -200,7 +200,7 @@ def to_env_file(environment: Environment):
         config["aggressive_update_packages"], tuple | list
     ):
         config["aggressive_update_packages"] = tuple(
-            map(str, config.get("aggressive_update_packages", []))
+            map(str, config.get("aggressive_update_packages", ()))
         )
 
     # Convert the enum types to their string values
