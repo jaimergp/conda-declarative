@@ -1,4 +1,4 @@
-"""Code for managing the state of env.yml."""
+"""Code for managing the declarative input state in an environment."""
 
 import pathlib
 from collections.abc import Iterable
