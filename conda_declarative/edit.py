@@ -361,7 +361,10 @@ class EditApp(App):
 
         If the file hasn't been saved, ask to save it first.
         """
-        if self.editor.text != self.initial_text:
+        with open(self.filename) as f:
+            current_text = f.read()
+
+        if self.editor.text != current_text:
             # Ask about quitting without saving
             def check_should_save(should_save: bool | None) -> None:
                 """Optionally save before quitting based on the QuitModal return result.
