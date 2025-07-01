@@ -15,8 +15,6 @@ except ImportError:
 
 from collections.abc import Iterable
 
-import tomli_w
-from conda.history import History
 from conda.models.records import PrefixRecord
 from conda.plugins.virtual_packages.cuda import cached_cuda_version
 from rich.style import Style
@@ -35,7 +33,7 @@ from textual.widgets import (
 )
 
 from .apply import solve
-from .constants import CONDA_MANIFEST_FILE, MANIFEST_TEMPLATE
+from .constants import CONDA_MANIFEST_FILE
 from .util import set_conda_console
 
 if TYPE_CHECKING:
@@ -473,54 +471,3 @@ def run_editor(prefix: PathType, subdirs: tuple[str, str]) -> None:
         subdirs,
     )
     app.run()
-
-
-def read_manifest(prefix: PathType) -> dict[str, Any]:
-    """Read the manifest from <prefix>/conda-meta/environment.yml.
-
-    Parameters
-    ----------
-    prefix : PathType
-        Prefix to read the manifest for
-
-    Returns
-    -------
-    dict[str, Any]
-        Manifest from the requested prefix
-    """
-    manifest_path = Path(prefix, CONDA_MANIFEST_FILE)
-    return loads(manifest_path.read_text())
-
-
-def update_manifest(prefix: PathType) -> tuple[str, str]:
-    """Update the manifest for the given prefix with the user-requested packages.
-
-    If no manifest is found, return the default manifest template populated
-    with requirements from the prefix history's user-requested specs. A new
-    manifest file will be created in this case.
-
-    Parameters
-    ----------
-    prefix : PathType
-        Prefix to update the manifest for
-
-    Returns
-    -------
-    tuple[str, str]
-        (Old manifest file contents, new manifest file contents)
-    """
-    # This can/should be delegated to Manifest class that knows how to do these editions
-    prefix = Path(prefix)
-    manifest_path = prefix / CONDA_MANIFEST_FILE
-    if manifest_path.is_file():
-        manifest_text = manifest_path.read_text()
-        manifest_data = loads(manifest_text)
-    else:
-        manifest_text = MANIFEST_TEMPLATE.format(name=prefix.name, path=str(prefix))
-        manifest_data = loads(manifest_text)
-    manifest_data["requirements"] = [
-        str(s) for s in History(prefix).get_requested_specs_map().values()
-    ]
-    new_manifest_text = tomli_w.dumps(manifest_data)
-    manifest_path.write_text(new_manifest_text)
-    return manifest_text, new_manifest_text

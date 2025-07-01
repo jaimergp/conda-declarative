@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from types import TracebackType
 from typing import TYPE_CHECKING
 
 from conda.plugins.reporter_backends.console import (
@@ -114,23 +115,54 @@ class TuiReporterRenderer(ReporterRendererBase):
         return TuiProgressBar()
 
     def spinner(self, message: str, failed_message: str) -> SpinnerBase:
-        """Return a spinner for the TUI."""
+        """Return the spinner class instance for rendering.
+
+        Parameters
+        ----------
+        message : str
+            Message to display next to the spinner
+        failed_message : str
+            Message to display in case of failure
+
+        Returns
+        -------
+        SpinnerBase
+            Spinner to be displayed
+        """
         return TuiSpinner(message, failed_message)
 
-    def prompt(
-        self,
-        message: str = "Proceed",
-        choices: tuple[str, str] = ("yes", "no"),
-        default: str = "yes",
-    ) -> str:
-        """Allow for defining an implementation of a "yes/no" confirmation function."""
+    def prompt(self, message: str, choices: list[str], default: str) -> str:
+        """Prompt to use when user input is required.
+
+        Unused here.
+
+        Parameters
+        ----------
+        message : str
+            Message to display to the user
+        choices : list[str]
+            Valid choices
+        default : str
+            Default choice
+
+        Returns
+        -------
+        str
+            User-provided input
+        """
+        pass
 
 
 class TuiSpinner(SpinnerBase):
-    """A simple spinner."""
+    """Dummy spinner which swallows spinner output from conda."""
 
     def __enter__(self, *args, **kwargs):
         return
 
-    def __exit__(self, *args, **kwargs):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ):
         return
