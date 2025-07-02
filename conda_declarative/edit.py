@@ -393,11 +393,15 @@ class EditApp(App):
         self.table.sort(self.table_sort_key)
 
     def action_save(self) -> None:
-        """Save the current text to the file."""
+        """Save the current text to the file.
+
+        Also display a toast notification to alert the user.
+        """
         with open(self.filename, "w") as f:
             f.write(self.editor.text)
 
         self.title = f"Editing {self.filename}"
+        self.notify(f"Saved: {self.filename}")
 
 
 class QuitModal(ModalScreen):
