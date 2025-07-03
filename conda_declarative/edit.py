@@ -23,7 +23,7 @@ from rich.text import Text as RichText
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Center, Container, Horizontal, Vertical
+from textual.containers import Center, Container, Horizontal, Right, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
@@ -53,6 +53,10 @@ if TYPE_CHECKING:
 # we can just ensure this is cached up front to avoid the issue
 # altogether.
 cuda = cached_cuda_version()
+
+REQUESTED_STYLE = Style(color="yellow", bold=True)
+ADDED_STYLE = Style(color="blue")
+REMOVED_STYLE = Style(color="red")
 
 
 class Text(RichText):
@@ -285,10 +289,11 @@ class EditApp(App):
         for record in records:
             rows.append(
                 (
+                    "",  # Status column
                     record.name,
                     record.version,
                     record.build,
-                    record.build_number,
+                    str(record.build_number),
                     str(record.channel),
                 )
             )
@@ -347,22 +352,15 @@ class EditApp(App):
 
         # Packages explicitly requested
         for row in requested_rows:
-            rows.append(
-                (Text(row[0], style=Style(color="yellow", bold=True)), *row[1:])
-            )
+            rows.append(Text(col, style=REQUESTED_STYLE) for col in ("++>", *row[1:]))
 
         # Packages to be added
         for row in current_rows - initial_rows:
-            rows.append((Text(row[0], style=Style(color="blue", bold=True)), *row[1:]))
+            rows.append(Text(col, style=ADDED_STYLE) for col in ("+  ", *row[1:]))
 
         # Packages to be removed
         for row in initial_rows - current_rows:
-            rows.append(
-                (
-                    Text(row[0], style=Style(color="red", bold=True, strike=True)),
-                    *row[1:],
-                )
-            )
+            rows.append(Text(col, style=REMOVED_STYLE) for col in ("-  ", *row[1:]))
 
         rows.extend(current_rows & initial_rows)
         return rows
@@ -382,8 +380,15 @@ class EditApp(App):
                 yield self.editor
             with Vertical():
                 yield self.table
-                with Horizontal(id="progress-area"), Center():
-                    yield self.progress_label
+                with Horizontal(id="progress-area"):
+                    yield Label(
+                        Text("++>  Requested package", style=REQUESTED_STYLE)
+                        + Text("       +  Added package", style=ADDED_STYLE)
+                        + Text("       -  Removed package", style=REMOVED_STYLE)
+                        + Text("          Unchanged package", style="default")
+                    )
+                    with Right():
+                        yield self.progress_label
         yield Footer()
 
     async def on_mount(self):
@@ -393,7 +398,7 @@ class EditApp(App):
         """
         self.editor_label.update(f"Editing {self.filename}")
 
-        for label in ("name", "version", "build", "build_number", "channel"):
+        for label in ("status", "name", "version", "build", "build_number", "channel"):
             self.table.add_column(label + "  ", key=label)
         self.run_worker(self.update_table(debounce=0), exclusive=True)
 
