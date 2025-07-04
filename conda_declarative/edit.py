@@ -17,13 +17,14 @@ from collections.abc import Iterable
 
 from conda.models.match_spec import MatchSpec
 from conda.models.records import PrefixRecord
+from conda.plugins.types import CondaReporterBackend
 from conda.plugins.virtual_packages.cuda import cached_cuda_version
 from rich.style import Style
 from rich.text import Text as RichText
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Center, Container, Horizontal, Right, Vertical
+from textual.containers import Center, Container, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
@@ -33,8 +34,9 @@ from textual.widgets import (
     TextArea,
 )
 
-from .apply import solve
+from .apply import apply, solve
 from .constants import CONDA_MANIFEST_FILE
+from .renderers import TuiReporterRenderer
 from .state import dict_to_env, update_state
 from .util import set_conda_console
 
@@ -82,6 +84,7 @@ class EditApp(App):
     BINDINGS = [
         Binding("ctrl+q", "quit", "Quit", priority=True),
         Binding("ctrl+s", "save", "Save", priority=True),
+        Binding("ctrl+e", "sync", "Sync", priority=True),
     ]
 
     DEFAULT_CSS = """
@@ -89,7 +92,7 @@ class EditApp(App):
         height: 1fr;
     }
     #progress-area {
-        height: 1;
+        height: 2;
     }
     #editor-label-area {
         height: 1;
@@ -104,6 +107,7 @@ class EditApp(App):
         filename: os.PathLike,
         prefix: os.PathLike,
         subdirs: tuple[str, str],
+        reporter_backend: CondaReporterBackend,
     ):
         super().__init__()
 
@@ -125,6 +129,9 @@ class EditApp(App):
         self.initial_text = text
         self.editor = TextArea.code_editor(text=text, language="toml", id="editor")
         self.editor_label = Label()
+        self.reporter_renderer: TuiReporterRenderer = reporter_backend.renderer()
+        self.progress_bar = self.reporter_renderer.progress_bar("")
+        self.spinner = self.reporter_renderer.spinner("", "")
         self.progress_label = Label()
 
         self.table = DataTable(id="output", cursor_type="row")
@@ -380,14 +387,16 @@ class EditApp(App):
                 yield self.editor
             with Vertical():
                 yield self.table
-                with Horizontal(id="progress-area"):
+                with Vertical(id="progress-area"):
                     yield Label(
                         Text("++>  Requested package", style=REQUESTED_STYLE)
                         + Text("       +  Added package", style=ADDED_STYLE)
                         + Text("       -  Removed package", style=REMOVED_STYLE)
                         + Text("          Unchanged package", style="default")
                     )
-                    with Right():
+                    with Horizontal():
+                        yield self.progress_bar.widget()
+                        yield self.spinner.widget()
                         yield self.progress_label
         yield Footer()
 
@@ -451,6 +460,24 @@ class EditApp(App):
         self.title = f"Editing {self.filename}"
         self.notify(f"Saved: {self.filename}")
 
+    async def action_sync(self) -> None:
+        """Run the save action, then run the sync action."""
+        self.action_save()
+        self.run_worker(self.run_sync(), exclusive=True)
+
+    async def run_sync(self):
+        """Save the current file, then apply it to the current environment."""
+        self.set_status("applying")
+        with set_conda_console():
+            await asyncio.to_thread(
+                apply,
+                prefix=self.prefix,
+                quiet=True,
+                dry_run=False,
+                lock_only=False,
+            )
+        self.set_status("done")
+
 
 class QuitModal(ModalScreen):
     """Modal dialog which appears when trying to quit without having saved."""
@@ -506,7 +533,11 @@ class QuitModal(ModalScreen):
         self.dismiss(event.button.id == "yes")
 
 
-def run_editor(prefix: PathType, subdirs: tuple[str, str]) -> None:
+def run_editor(
+    prefix: PathType,
+    subdirs: tuple[str, str],
+    reporter_backend: CondaReporterBackend,
+) -> None:
     """Launch the textual editor.
 
     Parameters
@@ -516,10 +547,13 @@ def run_editor(prefix: PathType, subdirs: tuple[str, str]) -> None:
         for
     subdirs : tuple[str, str]
         Subdirectories known by conda; see docs for `context.subdirs`
+    reporter_backend : CondaReporterBackend
+        Reporter backend to use for displaying progress
     """
     app = EditApp(
         Path(prefix, CONDA_MANIFEST_FILE),
         Path(prefix),
         subdirs,
+        reporter_backend,
     )
     app.run()

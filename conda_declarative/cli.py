@@ -8,9 +8,6 @@ from pathlib import Path
 from conda.base.context import context
 from conda.cli.conda_argparse import add_parser_help
 from conda.cli.helpers import add_parser_prefix, add_parser_verbose
-from conda.exceptions import DryRunExit
-
-from .exceptions import LockOnlyExit
 
 
 def configure_parser_edit(parser: argparse.ArgumentParser) -> None:
@@ -60,8 +57,7 @@ def execute_edit(args: argparse.Namespace) -> int:
         return 0
 
     run_editor(
-        prefix,
-        context.subdirs,
+        prefix, context.subdirs, context.plugin_manager.get_reporter_backend("tui")
     )
 
     if not args.apply:  # nothing else to do
@@ -112,33 +108,13 @@ def execute_apply(args: argparse.Namespace) -> int:
     int
         Return value of the process; 0 means success
     """
-    from .apply import link, lock, solve
-    from .state import from_env_file
+    from .apply import apply
 
-    env = from_env_file(str(context.target_prefix))
-
-    if env is not None:
-        requested_packages = env.requested_packages
-        if env.config is not None:
-            channels = env.config.channels
-    else:
-        channels = []
-        requested_packages = []
-
-    records = solve(
+    apply(
         prefix=context.target_prefix,
-        channels=channels,
-        subdirs=context.subdirs,
-        specs=requested_packages,
+        quiet=context.quiet,
+        lock_only=args.lock_only,
+        dry_run=args.dry_run,
+        args=args,
     )
-    if not context.quiet:
-        print(*records, sep="\n")  # This should be a diff'd report
-    if context.dry_run:
-        raise DryRunExit()
-
-    if args.lock_only:
-        lock(prefix=context.target_prefix, records=records)
-        raise LockOnlyExit()
-
-    link(prefix=context.target_prefix, records=records, args=args)
     return 0

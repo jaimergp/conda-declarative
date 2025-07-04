@@ -14,9 +14,14 @@ from conda.base.context import context
 from conda.cli.install import handle_txn
 from conda.core.link import PrefixSetup, UnlinkLinkTransaction
 from conda.core.solve import diff_for_unlink_link_precs
+from conda.exceptions import (
+    DryRunExit,
+)
 from conda.models.prefix_graph import PrefixGraph
 
 from .constants import CONDA_HISTORY_D
+from .exceptions import LockOnlyExit
+from .state import from_env_file
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -110,7 +115,8 @@ def link(
     records : Iterable[PackageRecord]
         Packages for which the `UnlinkLinkTransaction` is being applied to
     args : argparse.Namespace
-        Command line arguments passed in
+        Command line arguments to pass to `handle_txn`. Currently, only
+        `args.package_names` is used
 
     Returns
     -------
@@ -133,3 +139,133 @@ def link(
     )
     handle_txn(txn, prefix, args, False, True)
     return txn
+
+
+def apply(
+    prefix: str | None = None,
+    quiet: bool = False,
+    dry_run: bool = False,
+    lock_only: bool = False,
+    *args,
+) -> None:
+    """Read the env file, solve it, and then link the resulting transaction.
+
+    Parameters
+    ----------
+    prefix : str | None
+        Prefix of the environment to modify
+    quiet : bool
+        If True, suppress status messages
+    dry_run : bool
+        If True, only solve the environment, don't change the environment
+    lock_only : bool
+        If True, only lock the records in the target prefix - don't change the
+        environment
+    *args
+        Any additional command line arguments to be passed to `link`. Currently,
+        only `args.package_names` is used
+    """
+    if prefix is None:
+        prefix = context.target_prefix
+
+    env = from_env_file(str(prefix))
+
+    if env is not None:
+        requested_packages = env.requested_packages
+        if env.config is not None:
+            channels = env.config.channels
+    else:
+        channels = []
+        requested_packages = []
+
+    records = solve(
+        prefix=context.target_prefix,
+        channels=channels,
+        subdirs=context.subdirs,
+        specs=requested_packages,
+    )
+
+    if not quiet:
+        print(*records, sep="\n")  # This should be a diff'd report
+
+    if dry_run:
+        raise DryRunExit()
+
+    if lock_only:
+        lock(prefix=context.target_prefix, records=records)
+        raise LockOnlyExit()
+
+    link(prefix=context.target_prefix, records=records, args=args)
+
+
+# def handle_txn(
+#     unlink_link_transaction: UnlinkLinkTransaction,
+#     prefix: str,
+#     package_names: Iterable[MatchSpec | PackageRecord | str] | None,
+#     newenv: bool = False,
+#     remove_op: bool = False,
+# ):
+#     """Handle the transaction.
+#
+#     Parameters
+#     ----------
+#     unlink_link_transaction : UnlinkLinkTransaction
+#         Transaction to carry out
+#     prefix : str
+#         Prefix in which the transaction should be carried out
+#     package_names : Iterable[MatchSpec | PackageRecord | str] | None
+#
+#     newenv : bool
+#         If True, and `context.subdir` is not the native subdir for the system,
+#         the `subdir` config option in .condarc will be modified to include
+#         `context.subdir`.
+#     remove_op : bool
+#
+#
+#     """
+#     if unlink_link_transaction.nothing_to_do:
+#         if remove_op:
+#             # No packages found to remove from environment
+#             if package_names is None:
+#                 package_names = []
+#
+#             raise PackagesNotFoundError(package_names)
+#         elif not newenv:
+#             if context.json:
+#                 common.stdout_json_success(
+#                     message="All requested packages already installed."
+#                 )
+#             else:
+#                 print("\n# All requested packages already installed.\n")
+#             return
+#
+#     if not context.json:
+#         unlink_link_transaction.print_transaction_summary()
+#         confirm_yn()
+#
+#     elif context.dry_run:
+#         actions = unlink_link_transaction._make_legacy_action_groups()[0]
+#         common.stdout_json_success(prefix=prefix, actions=actions, dry_run=True)
+#         raise DryRunExit()
+#
+#     try:
+#         unlink_link_transaction.download_and_extract()
+#         if context.download_only:
+#             raise CondaExitZero(
+#                 "Package caches prepared. UnlinkLinkTransaction cancelled with "
+#                 "--download-only option."
+#             )
+#         unlink_link_transaction.execute()
+#
+#     except SystemExit as e:
+#         raise CondaSystemExit("Exiting", e) from None
+#
+#     if newenv and context.subdir != context._native_subdir():
+#         set_keys(
+#             ("subdir", context.subdir),
+#             path=Path(prefix, ".condarc"),
+#         )
+#
+#     if context.json:
+#         actions = unlink_link_transaction._make_legacy_action_groups()[0]
+#         common.stdout_json_success(prefix=prefix, actions=actions)
