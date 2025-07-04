@@ -1,0 +1,453 @@
+{
+  "$defs": {
+    "Author": {
+      "additionalProperties": false,
+      "description": "Metadata to describe a single author or maintainer.",
+      "properties": {
+        "email": {
+          "description": "E-mail address for the author or team.",
+          "format": "email",
+          "title": "Email",
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of the author or team.",
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "email"
+      ],
+      "title": "Author",
+      "type": "object"
+    },
+    "CondaPackageConstraints": {
+      "additionalProperties": false,
+      "description": "Constraints for conda packages.",
+      "properties": {
+        "build": {
+          "default": "*",
+          "minLength": 1,
+          "title": "Build",
+          "type": "string"
+        },
+        "channel": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Channel"
+        },
+        "version": {
+          "default": "*",
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "title": "CondaPackageConstraints",
+      "type": "object"
+    },
+    "PlatformSpecificFields": {
+      "additionalProperties": false,
+      "description": "Platform-specific overrides.",
+      "properties": {
+        "config": {
+          "additionalProperties": true,
+          "default": {},
+          "description": "Configuration details for the install tool.",
+          "propertyNames": {
+            "minLength": 1
+          },
+          "title": "Config",
+          "type": "object"
+        },
+        "constraints": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/CondaPackageConstraints"
+              }
+            ]
+          },
+          "default": {},
+          "description": "Additional constraints to impose on the solver for conda dependencies.\nThese are not requirements, but will condition which packages are available for selection.",
+          "propertyNames": {
+            "minLength": 1
+          },
+          "title": "Constraints",
+          "type": "object"
+        },
+        "dependencies": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/CondaPackageConstraints"
+              }
+            ]
+          },
+          "default": {},
+          "description": "conda packages to install. It must be a mapping of package names to package versions. Use `*` for the version if any version works. The value can also be an object that specifies version, build and/or channel.",
+          "propertyNames": {
+            "minLength": 1
+          },
+          "title": "Dependencies",
+          "type": "object"
+        },
+        "pypi-dependencies": {
+          "additionalProperties": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "default": {},
+          "description": "PyPI packages to install. It must be a mapping of package names to package versions. Use `*` for the version if any version works.",
+          "propertyNames": {
+            "minLength": 1
+          },
+          "title": "Pypi-Dependencies",
+          "type": "object"
+        },
+        "system-requirements": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SystemRequirements"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "help": "\nProperties of system features.\n\nThese will be exposed to the solver for the appropriate\nselection of package variants, usually as lower bounds.\n"
+        }
+      },
+      "title": "PlatformSpecificFields",
+      "type": "object"
+    },
+    "Project": {
+      "additionalProperties": false,
+      "description": "Metadata about for this manifest file. Mostly static.",
+      "properties": {
+        "authors": {
+          "default": [],
+          "description": "People or teams involved in the creation and maintenance of this file.",
+          "items": {
+            "$ref": "#/$defs/Author"
+          },
+          "title": "Authors",
+          "type": "array"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "An optional free-form text field for maintainers to document this manifest file. Supports Markdown.",
+          "title": "Description"
+        },
+        "license": {
+          "description": "SPDX expression describing the license of this work.",
+          "minLength": 1,
+          "title": "License",
+          "type": "string"
+        },
+        "license-files": {
+          "default": [],
+          "description": "List of paths to the license files governing this work.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "License-Files",
+          "type": "array"
+        },
+        "name": {
+          "description": "Name for this project.",
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "revision": {
+          "description": "A version-like string that allows maintainers to apply versioning schemes to this manifest file.",
+          "minLength": 1,
+          "title": "Revision",
+          "type": "string"
+        },
+        "urls": {
+          "additionalProperties": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "default": {},
+          "description": "Mapping of website names to their URL addresses.",
+          "propertyNames": {
+            "minLength": 1
+          },
+          "title": "Urls",
+          "type": "object"
+        }
+      },
+      "required": [
+        "name",
+        "revision",
+        "license"
+      ],
+      "title": "Project",
+      "type": "object"
+    },
+    "SystemRequirements": {
+      "additionalProperties": false,
+      "description": "Properties of system features.\nThese will be exposed to the solver for the appropriate selection of package variants, usually as lower bounds.",
+      "properties": {
+        "archspec": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "System architecture name. Equivalent to setting `CONDA_OVERRIDE_ARCHSPEC`.",
+          "title": "Archspec"
+        },
+        "cuda": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Version of CUDA. Equivalent to setting `CONDA_OVERRIDE_CUDA`.",
+          "title": "Cuda"
+        },
+        "libc": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Version of the system libc (Linux only). Equivalent to setting `CONDA_OVERRIDE_GLIBC`.",
+          "title": "Libc"
+        },
+        "linux": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Version of the Linux kernel. Equivalent to setting `CONDA_OVERRIDE_LINUX`.",
+          "title": "Linux"
+        },
+        "osx": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Version of macOS. Equivalent to setting `CONDA_OVERRIDE_OSX`.",
+          "title": "Osx"
+        },
+        "win": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Version of Windows in use. Equivalent to setting `CONDA_OVERRIDE_WIN`.",
+          "title": "Win"
+        }
+      },
+      "title": "SystemRequirements",
+      "type": "object"
+    },
+    "ValidPlatforms": {
+      "description": "Valid platforms (all known subdirs, except `noarch`).",
+      "enum": [
+        "emscripten-wasm32",
+        "wasi-wasm32",
+        "freebsd-64",
+        "linux-32",
+        "linux-64",
+        "linux-aarch64",
+        "linux-armv6l",
+        "linux-armv7l",
+        "linux-ppc64",
+        "linux-ppc64le",
+        "linux-riscv64",
+        "linux-s390x",
+        "osx-64",
+        "osx-arm64",
+        "win-32",
+        "win-64",
+        "win-arm64",
+        "zos-z"
+      ],
+      "title": "ValidPlatforms",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Schema for `conda.toml` manifest files.",
+  "properties": {
+    "$schema": {
+      "default": "https://schemas.conda.org/conda/v0/conda-manifest.schema.json",
+      "description": "JSON Schema URL or path used to validate this input file.",
+      "minLength": 1,
+      "title": "$Schema",
+      "type": "string"
+    },
+    "about": {
+      "$ref": "#/$defs/Project",
+      "help": "\nMetadata about for this manifest file. Mostly static.\n"
+    },
+    "config": {
+      "additionalProperties": true,
+      "default": {},
+      "description": "Configuration details for the install tool.",
+      "propertyNames": {
+        "minLength": 1
+      },
+      "title": "Config",
+      "type": "object"
+    },
+    "constraints": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "minLength": 1,
+            "type": "string"
+          },
+          {
+            "$ref": "#/$defs/CondaPackageConstraints"
+          }
+        ]
+      },
+      "default": {},
+      "description": "Additional constraints to impose on the solver for conda dependencies.\nThese are not requirements, but will condition which packages are available for selection.",
+      "propertyNames": {
+        "minLength": 1
+      },
+      "title": "Constraints",
+      "type": "object"
+    },
+    "dependencies": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "minLength": 1,
+            "type": "string"
+          },
+          {
+            "$ref": "#/$defs/CondaPackageConstraints"
+          }
+        ]
+      },
+      "default": {},
+      "description": "conda packages to install. It must be a mapping of package names to package versions. Use `*` for the version if any version works. The value can also be an object that specifies version, build and/or channel.",
+      "propertyNames": {
+        "minLength": 1
+      },
+      "title": "Dependencies",
+      "type": "object"
+    },
+    "platform": {
+      "additionalProperties": {
+        "$ref": "#/$defs/PlatformSpecificFields"
+      },
+      "default": {},
+      "description": "Platform-specific configuration.",
+      "propertyNames": {
+        "$ref": "#/$defs/ValidPlatforms"
+      },
+      "title": "Platform",
+      "type": "object"
+    },
+    "pypi-dependencies": {
+      "additionalProperties": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "default": {},
+      "description": "PyPI packages to install. It must be a mapping of package names to package versions. Use `*` for the version if any version works.",
+      "propertyNames": {
+        "minLength": 1
+      },
+      "title": "Pypi-Dependencies",
+      "type": "object"
+    },
+    "system-requirements": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SystemRequirements"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "help": "\nProperties of system features.\n\nThese will be exposed to the solver for the appropriate\nselection of package variants, usually as lower bounds.\n"
+    },
+    "version": {
+      "default": 0,
+      "description": "Version of the conda.toml file format.",
+      "minimum": 0,
+      "title": "Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "about"
+  ],
+  "title": "CondaManifest",
+  "type": "object"
+}
