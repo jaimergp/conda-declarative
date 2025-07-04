@@ -24,6 +24,148 @@
       "title": "Author",
       "type": "object"
     },
+    "ChannelPriority": {
+      "enum": [
+        "strict",
+        "flexible",
+        "disabled"
+      ],
+      "title": "ChannelPriority",
+      "type": "string"
+    },
+    "CondaConfig": {
+      "description": "Conda configuration for this project.\nOnly a subset of the full `.condarc` settings is allowed. Additional keys can be added but will be ignored in `conda`.",
+      "properties": {
+        "aggressive-update-packages": {
+          "default": [],
+          "description": "List of package names to always include in update requests.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Aggressive-Update-Packages",
+          "type": "array"
+        },
+        "channel-priority": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChannelPriority"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What priority scheme to follow when solving with more than one channel."
+        },
+        "channel-settings": {
+          "default": [],
+          "description": "Per-channel configuration. The keys must be names mentioned in `channels`.",
+          "items": {
+            "additionalProperties": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "propertyNames": {
+              "minLength": 1
+            },
+            "type": "object"
+          },
+          "title": "Channel-Settings",
+          "type": "array"
+        },
+        "channels": {
+          "default": [],
+          "description": "List of channels to obtain packages from.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Channels",
+          "type": "array"
+        },
+        "pinned-packages": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/CondaPackageConstraints"
+              }
+            ]
+          },
+          "default": {},
+          "description": "Additional constraints to impose on the solver for conda dependencies.\nThese are not requirements, but will condition which packages are available for selection.",
+          "propertyNames": {
+            "minLength": 1
+          },
+          "title": "Pinned-Packages",
+          "type": "object"
+        },
+        "platforms": {
+          "default": [],
+          "description": "Which platforms should be solved for this project. Defaults to the platform `conda` is running on, but can be extended to additional ones to, for example, generate lockfiles on each update.",
+          "items": {
+            "$ref": "#/$defs/ValidPlatforms"
+          },
+          "title": "Platforms",
+          "type": "array"
+        },
+        "repodata-fns": {
+          "default": [],
+          "description": "Repodata filenames to query in each channel. Usually, `repodata.json`.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Repodata-Fns",
+          "type": "array"
+        },
+        "sat-solver": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SatSolverChoice"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Which SAT backend to use for the `classic` solver plugin."
+        },
+        "solver": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Which solver plugin to use.",
+          "title": "Solver"
+        },
+        "use-only-tar-bz2": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Ignore .conda artifacts and solve only with .tar.bz2. Legacy option, discouraged.",
+          "title": "Use-Only-Tar-Bz2"
+        }
+      },
+      "title": "CondaConfig",
+      "type": "object"
+    },
     "CondaPackageConstraints": {
       "additionalProperties": false,
       "description": "Constraints for conda packages.",
@@ -62,34 +204,16 @@
       "description": "Platform-specific overrides.",
       "properties": {
         "config": {
-          "additionalProperties": true,
-          "default": {},
-          "description": "Configuration details for the install tool.",
-          "propertyNames": {
-            "minLength": 1
-          },
-          "title": "Config",
-          "type": "object"
-        },
-        "constraints": {
-          "additionalProperties": {
-            "anyOf": [
-              {
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "$ref": "#/$defs/CondaPackageConstraints"
-              }
-            ]
-          },
-          "default": {},
-          "description": "Additional constraints to impose on the solver for conda dependencies.\nThese are not requirements, but will condition which packages are available for selection.",
-          "propertyNames": {
-            "minLength": 1
-          },
-          "title": "Constraints",
-          "type": "object"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CondaConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Configuration details for the install tool."
         },
         "dependencies": {
           "additionalProperties": {
@@ -216,6 +340,15 @@
       ],
       "title": "Project",
       "type": "object"
+    },
+    "SatSolverChoice": {
+      "enum": [
+        "pycosat",
+        "pycryptosat",
+        "pysat"
+      ],
+      "title": "SatSolverChoice",
+      "type": "string"
     },
     "SystemRequirements": {
       "additionalProperties": false,
@@ -351,34 +484,16 @@
       "help": "\nMetadata about for this manifest file. Mostly static.\n"
     },
     "config": {
-      "additionalProperties": true,
-      "default": {},
-      "description": "Configuration details for the install tool.",
-      "propertyNames": {
-        "minLength": 1
-      },
-      "title": "Config",
-      "type": "object"
-    },
-    "constraints": {
-      "additionalProperties": {
-        "anyOf": [
-          {
-            "minLength": 1,
-            "type": "string"
-          },
-          {
-            "$ref": "#/$defs/CondaPackageConstraints"
-          }
-        ]
-      },
-      "default": {},
-      "description": "Additional constraints to impose on the solver for conda dependencies.\nThese are not requirements, but will condition which packages are available for selection.",
-      "propertyNames": {
-        "minLength": 1
-      },
-      "title": "Constraints",
-      "type": "object"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CondaConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Configuration details for the install tool."
     },
     "dependencies": {
       "additionalProperties": {
@@ -405,7 +520,7 @@
         "$ref": "#/$defs/PlatformSpecificFields"
       },
       "default": {},
-      "description": "Platform-specific configuration.",
+      "description": "Platform-specific details. Allows extending most top-level keys with items exclusively used when that platform is selected.",
       "propertyNames": {
         "$ref": "#/$defs/ValidPlatforms"
       },

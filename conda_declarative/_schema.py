@@ -7,11 +7,14 @@ from __future__ import annotations
 import json
 import re
 from enum import StrEnum
-from inspect import cleandoc
 from pathlib import Path
-from typing import Annotated, Literal, TypeAlias, Union  # noqa
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, EmailStr
+from conda.base.constants import (
+    ChannelPriority,
+    SatSolverChoice,
+)
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 HERE = Path(__file__).parent
 SCHEMA_PATH = HERE / "data" / "conda-manifest.schema.json"
@@ -140,6 +143,74 @@ class CondaPackageConstraints(BaseModel):
     channel: NonEmptyStr | None = None
 
 
+class CondaConfig(BaseModel):
+    """
+    Conda configuration for this project.
+
+    Only a subset of the full `.condarc` settings is allowed. Additional keys can be added
+    but will be ignored in `conda`.
+    """
+
+    model_config: ConfigDict = ConfigDict(
+        extra="ignore",
+        use_attribute_docstrings=True,
+    )
+
+    aggressive_update_packages: list[NonEmptyStr] = Field(
+        [],
+        alias="aggressive-update-packages",
+    )
+    """
+    List of package names to always include in update requests.
+    """
+    channel_priority: ChannelPriority | None = Field(None, alias="channel-priority")
+    """
+    What priority scheme to follow when solving with more than one channel.
+    """
+    channels: list[NonEmptyStr] = []
+    """
+    List of channels to obtain packages from.
+    """
+    channel_settings: list[dict[NonEmptyStr, NonEmptyStr]] = Field(
+        [],
+        alias="channel-settings",
+    )
+    """
+    Per-channel configuration. The keys must be names mentioned in `channels`.
+    """
+    platforms: list[ValidPlatforms] = []
+    """
+    Which platforms should be solved for this project. Defaults to the platform
+    `conda` is running on, but can be extended to additional ones to, for example,
+    generate lockfiles on each update.
+    """
+    pinned_packages: dict[NonEmptyStr, NonEmptyStr | CondaPackageConstraints] = Field(
+        {},
+        alias="pinned-packages",
+    )
+    """
+    Additional constraints to impose on the solver for conda dependencies.
+
+    These are not requirements, but will condition which packages are available for selection.
+    """
+    repodata_fns: list[NonEmptyStr] = Field([], alias="repodata-fns")
+    """
+    Repodata filenames to query in each channel. Usually, `repodata.json`.
+    """
+    sat_solver: SatSolverChoice | None = Field(None, alias="sat-solver")
+    """
+    Which SAT backend to use for the `classic` solver plugin.
+    """
+    solver: NonEmptyStr | None = None
+    """
+    Which solver plugin to use.
+    """
+    use_only_tar_bz2: bool | None = Field(None, alias="use-only-tar-bz2")
+    """
+    Ignore .conda artifacts and solve only with .tar.bz2. Legacy option, discouraged.
+    """
+
+
 class PlatformSpecificFields(BaseModel):
     """
     Platform-specific overrides.
@@ -147,7 +218,7 @@ class PlatformSpecificFields(BaseModel):
 
     model_config: ConfigDict = _base_config_dict
 
-    config: dict[NonEmptyStr, object] = {}  # TODO: Specify all accepted settings
+    config: CondaConfig | None = None
     """
     Configuration details for the install tool.
     """
@@ -161,12 +232,6 @@ class PlatformSpecificFields(BaseModel):
     conda packages to install. It must be a mapping of package names to package versions.
     Use `*` for the version if any version works. The value can also be an object that
     specifies version, build and/or channel.
-    """
-    constraints: dict[NonEmptyStr, NonEmptyStr | CondaPackageConstraints] = {}
-    """
-    Additional constraints to impose on the solver for conda dependencies.
-
-    These are not requirements, but will condition which packages are available for selection.
     """
     pypi_dependencies: dict[NonEmptyStr, NonEmptyStr] = Field(
         {}, alias="pypi-dependencies"
@@ -197,7 +262,8 @@ class CondaManifest(PlatformSpecificFields):
     about: Project = Field(help=Project.__doc__)
     platform: dict[ValidPlatforms, PlatformSpecificFields] = {}
     """
-    Platform-specific configuration.
+    Platform-specific details. Allows extending most top-level keys
+    with items exclusively used when that platform is selected.
     """
 
 
