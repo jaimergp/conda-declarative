@@ -15,6 +15,7 @@ except ImportError:
 
 from collections.abc import Iterable
 
+from conda.models.match_spec import MatchSpec
 from conda.models.records import PrefixRecord
 from conda.plugins.virtual_packages.cuda import cached_cuda_version
 from rich.style import Style
@@ -22,7 +23,7 @@ from rich.text import Text as RichText
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Center, Container, Horizontal, Vertical
+from textual.containers import Center, Container, Horizontal, Right, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
@@ -34,6 +35,7 @@ from textual.widgets import (
 
 from .apply import solve
 from .constants import CONDA_MANIFEST_FILE
+from .state import dict_to_env, update_state
 from .util import set_conda_console
 
 if TYPE_CHECKING:
@@ -51,6 +53,10 @@ if TYPE_CHECKING:
 # we can just ensure this is cached up front to avoid the issue
 # altogether.
 cuda = cached_cuda_version()
+
+REQUESTED_STYLE = Style(color="yellow", bold=True)
+ADDED_STYLE = Style(color="blue")
+REMOVED_STYLE = Style(color="red")
 
 
 class Text(RichText):
@@ -105,6 +111,14 @@ class EditApp(App):
         self.prefix = str(prefix)
         self.subdirs = subdirs
 
+        if not Path(self.filename).exists():
+            update_state(self.prefix)
+            self.notify(
+                f"No declarative environment file found at {self.filename}."
+                "Generating a new file from the environment history.",
+                severity="warning",
+            )
+
         with open(self.filename) as f:
             text = f.read()
 
@@ -119,8 +133,8 @@ class EditApp(App):
 
         # Save the solution for the currently saved environment spec
         # and for the pending environment spec
-        self.initial_solution = None
-        self.current_solution = None
+        self.initial_solution: Iterable[PrefixRecord] | None = None
+        self.current_solution: Iterable[PrefixRecord] | None = None
 
         self.set_status("done")
 
@@ -219,10 +233,16 @@ class EditApp(App):
         try:
             self.set_status("reading toml")
             manifest = await asyncio.to_thread(loads, self.editor.text)
+            environment = dict_to_env(manifest)
         except Exception as e:
             self.notify(f"The current file is invalid TOML: {e}", severity="error")
             self.set_status("done")
             return
+
+        if environment.config is not None:
+            channels = environment.config.channels
+        else:
+            channels = []
 
         self.set_status("solving")
         with set_conda_console():
@@ -230,9 +250,9 @@ class EditApp(App):
                 records = await asyncio.to_thread(
                     solve,
                     prefix=self.prefix,
-                    channels=manifest.get("channels", []),
+                    channels=channels,
                     subdirs=self.subdirs,
-                    specs=manifest.get("requirements", []),
+                    specs=environment.requested_packages,
                 )
             except Exception as e:
                 # Disable markup styling here because conda exceptions include ANSI
@@ -246,7 +266,9 @@ class EditApp(App):
                 return
 
         self.current_solution = records
-        self.render_table(self.format_table_data(records))
+        self.render_table(
+            self.format_table_data(records, environment.requested_packages)
+        )
         self.set_status("done")
 
     def to_table(self, records: Iterable[PrefixRecord]) -> list[tuple[str, ...]]:
@@ -267,10 +289,11 @@ class EditApp(App):
         for record in records:
             rows.append(
                 (
+                    "",  # Status column
                     record.name,
                     record.version,
                     record.build,
-                    record.build_number,
+                    str(record.build_number),
                     str(record.channel),
                 )
             )
@@ -279,6 +302,7 @@ class EditApp(App):
     def format_table_data(
         self,
         records: Iterable[PrefixRecord],
+        requested_specs: Iterable[MatchSpec],
     ) -> list[tuple[str | Text, ...]]:
         """Format the solved records for printing into the table.
 
@@ -289,6 +313,9 @@ class EditApp(App):
         ----------
         records : Iterable[PrefixRecord]
             Solved set of records which will exist in the final environment
+        requested_specs : Iterable[MatchSpec]
+            Requested package specifications. Any packages in the current solution that
+            are requested will be specially highlighted
 
         Returns
         -------
@@ -303,25 +330,39 @@ class EditApp(App):
 
         # Otherwise, compare the packages in the solution to the current
         # set of packages
-        saved_rows = set(self.to_table(self.initial_solution))
-        current_solution_rows = set(self.to_table(records))
+        requested_rows, initial_rows, current_rows = set(), set(), set()
+
+        for record, row in zip(records, self.to_table(records)):
+            for spec in requested_specs:
+                if spec.match(record):
+                    requested_rows.add(row)
+                else:
+                    current_rows.add(row)
+
+        for record, row in zip(
+            self.initial_solution, self.to_table(self.initial_solution)
+        ):
+            for spec in requested_specs:
+                if spec.match(record):
+                    requested_rows.add(row)
+                else:
+                    initial_rows.add(row)
 
         rows = []
 
+        # Packages explicitly requested
+        for row in requested_rows:
+            rows.append(Text(col, style=REQUESTED_STYLE) for col in ("++>", *row[1:]))
+
         # Packages to be added
-        for row in current_solution_rows - saved_rows:
-            rows.append((Text(row[0], style=Style(color="blue", bold=True)), *row[1:]))
+        for row in current_rows - initial_rows:
+            rows.append(Text(col, style=ADDED_STYLE) for col in ("+  ", *row[1:]))
 
         # Packages to be removed
-        for row in saved_rows - current_solution_rows:
-            rows.append(
-                (
-                    Text(row[0], style=Style(color="red", bold=True, strike=True)),
-                    *row[1:],
-                )
-            )
+        for row in initial_rows - current_rows:
+            rows.append(Text(col, style=REMOVED_STYLE) for col in ("-  ", *row[1:]))
 
-        rows.extend(current_solution_rows & saved_rows)
+        rows.extend(current_rows & initial_rows)
         return rows
 
     def compose(self) -> Generator[ComposeResult, None, None]:
@@ -339,8 +380,15 @@ class EditApp(App):
                 yield self.editor
             with Vertical():
                 yield self.table
-                with Horizontal(id="progress-area"), Center():
-                    yield self.progress_label
+                with Horizontal(id="progress-area"):
+                    yield Label(
+                        Text("++>  Requested package", style=REQUESTED_STYLE)
+                        + Text("       +  Added package", style=ADDED_STYLE)
+                        + Text("       -  Removed package", style=REMOVED_STYLE)
+                        + Text("          Unchanged package", style="default")
+                    )
+                    with Right():
+                        yield self.progress_label
         yield Footer()
 
     async def on_mount(self):
@@ -350,7 +398,7 @@ class EditApp(App):
         """
         self.editor_label.update(f"Editing {self.filename}")
 
-        for label in ("name", "version", "build", "build_number", "channel"):
+        for label in ("status", "name", "version", "build", "build_number", "channel"):
             self.table.add_column(label + "  ", key=label)
         self.run_worker(self.update_table(debounce=0), exclusive=True)
 
