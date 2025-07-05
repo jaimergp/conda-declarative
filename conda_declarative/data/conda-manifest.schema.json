@@ -108,7 +108,27 @@
           "default": [],
           "description": "Which platforms should be solved for this project. Defaults to the platform `conda` is running on, but can be extended to additional ones to, for example, generate lockfiles on each update.",
           "items": {
-            "$ref": "#/$defs/ValidPlatforms"
+            "enum": [
+              "emscripten-wasm32",
+              "wasi-wasm32",
+              "freebsd-64",
+              "linux-32",
+              "linux-64",
+              "linux-aarch64",
+              "linux-armv6l",
+              "linux-armv7l",
+              "linux-ppc64",
+              "linux-ppc64le",
+              "linux-riscv64",
+              "linux-s390x",
+              "osx-64",
+              "osx-arm64",
+              "win-32",
+              "win-64",
+              "win-arm64",
+              "zos-z"
+            ],
+            "type": "string"
           },
           "title": "Platforms",
           "type": "array"
@@ -441,31 +461,6 @@
       },
       "title": "SystemRequirements",
       "type": "object"
-    },
-    "ValidPlatforms": {
-      "description": "Valid platforms (all known subdirs, except `noarch`).",
-      "enum": [
-        "emscripten-wasm32",
-        "wasi-wasm32",
-        "freebsd-64",
-        "linux-32",
-        "linux-64",
-        "linux-aarch64",
-        "linux-armv6l",
-        "linux-armv7l",
-        "linux-ppc64",
-        "linux-ppc64le",
-        "linux-riscv64",
-        "linux-s390x",
-        "osx-64",
-        "osx-arm64",
-        "win-32",
-        "win-64",
-        "win-arm64",
-        "zos-z"
-      ],
-      "title": "ValidPlatforms",
-      "type": "string"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -522,7 +517,26 @@
       "default": {},
       "description": "Platform-specific details. Allows extending most top-level keys with items exclusively used when that platform is selected.",
       "propertyNames": {
-        "$ref": "#/$defs/ValidPlatforms"
+        "enum": [
+          "emscripten-wasm32",
+          "wasi-wasm32",
+          "freebsd-64",
+          "linux-32",
+          "linux-64",
+          "linux-aarch64",
+          "linux-armv6l",
+          "linux-armv7l",
+          "linux-ppc64",
+          "linux-ppc64le",
+          "linux-riscv64",
+          "linux-s390x",
+          "osx-64",
+          "osx-arm64",
+          "win-32",
+          "win-64",
+          "win-arm64",
+          "zos-z"
+        ]
       },
       "title": "Platform",
       "type": "object"

@@ -6,11 +6,11 @@ from __future__ import annotations
 
 import json
 import re
-from enum import StrEnum
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from conda.base.constants import (
+    PLATFORMS,
     ChannelPriority,
     SatSolverChoice,
 )
@@ -26,30 +26,7 @@ _base_config_dict = ConfigDict(
     use_attribute_docstrings=True,
 )
 
-
-class ValidPlatforms(StrEnum):
-    """
-    Valid platforms (all known subdirs, except `noarch`).
-    """
-
-    EMSCRIPTEN_WASM32 = "emscripten-wasm32"
-    WASI_WASM32 = "wasi-wasm32"
-    FREEBSD_64 = "freebsd-64"
-    LINUX_32 = "linux-32"
-    LINUX_64 = "linux-64"
-    LINUX_AARCH64 = "linux-aarch64"
-    LINUX_ARMV6L = "linux-armv6l"
-    LINUX_ARMV7L = "linux-armv7l"
-    LINUX_PPC64 = "linux-ppc64"
-    LINUX_PPC64LE = "linux-ppc64le"
-    LINUX_RISCV64 = "linux-riscv64"
-    LINUX_S390X = "linux-s390x"
-    OSX_64 = "osx-64"
-    OSX_ARM64 = "osx-arm64"
-    WIN_32 = "win-32"
-    WIN_64 = "win-64"
-    WIN_ARM64 = "win-arm64"
-    ZOS_Z = "zos-z"
+ValidPlatforms = Literal[PLATFORMS]
 
 
 class Author(BaseModel):
@@ -178,7 +155,7 @@ class CondaConfig(BaseModel):
     """
     Per-channel configuration. The keys must be names mentioned in `channels`.
     """
-    platforms: list[ValidPlatforms] = []
+    platforms: list[ValidPlatforms] = []  # type: ignore
     """
     Which platforms should be solved for this project. Defaults to the platform
     `conda` is running on, but can be extended to additional ones to, for example,
