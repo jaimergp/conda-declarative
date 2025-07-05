@@ -40,7 +40,7 @@
           "default": [],
           "description": "List of package names to always include in update requests.",
           "items": {
-            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9_]([a-zA-Z0-9._-]*[a-zA-Z0-9_])?$",
             "type": "string"
           },
           "title": "Aggressive-Update-Packages",
@@ -85,21 +85,20 @@
           "type": "array"
         },
         "pinned-packages": {
-          "additionalProperties": {
-            "anyOf": [
-              {
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "$ref": "#/$defs/CondaPackageConstraints"
-              }
-            ]
-          },
           "default": {},
           "description": "Additional constraints to impose on the solver for conda dependencies.\nThese are not requirements, but will condition which packages are available for selection.",
-          "propertyNames": {
-            "minLength": 1
+          "patternProperties": {
+            "^[a-zA-Z0-9_]([a-zA-Z0-9._-]*[a-zA-Z0-9_])?$": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/$defs/CondaPackageConstraints"
+                }
+              ]
+            }
           },
           "title": "Pinned-Packages",
           "type": "object"
@@ -236,34 +235,32 @@
           "description": "Configuration details for the install tool."
         },
         "dependencies": {
-          "additionalProperties": {
-            "anyOf": [
-              {
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "$ref": "#/$defs/CondaPackageConstraints"
-              }
-            ]
-          },
           "default": {},
           "description": "conda packages to install. It must be a mapping of package names to package versions. Use `*` for the version if any version works. The value can also be an object that specifies version, build and/or channel.",
-          "propertyNames": {
-            "minLength": 1
+          "patternProperties": {
+            "^[a-zA-Z0-9_]([a-zA-Z0-9._-]*[a-zA-Z0-9_])?$": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/$defs/CondaPackageConstraints"
+                }
+              ]
+            }
           },
           "title": "Dependencies",
           "type": "object"
         },
         "pypi-dependencies": {
-          "additionalProperties": {
-            "minLength": 1,
-            "type": "string"
-          },
           "default": {},
           "description": "PyPI packages to install. It must be a mapping of package names to package versions. Use `*` for the version if any version works.",
-          "propertyNames": {
-            "minLength": 1
+          "patternProperties": {
+            "^[a-zA-Z0-9_]([a-zA-Z0-9._-]*[a-zA-Z0-9_])?$": {
+              "minLength": 1,
+              "type": "string"
+            }
           },
           "title": "Pypi-Dependencies",
           "type": "object"
@@ -329,13 +326,13 @@
         },
         "name": {
           "description": "Name for this project.",
-          "minLength": 1,
+          "pattern": "^[^/:# ]+$",
           "title": "Name",
           "type": "string"
         },
         "revision": {
           "description": "A version-like string that allows maintainers to apply versioning schemes to this manifest file.",
-          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9_]([a-zA-Z0-9._-]*[a-zA-Z0-9_])?$",
           "title": "Revision",
           "type": "string"
         },
@@ -377,7 +374,7 @@
         "archspec": {
           "anyOf": [
             {
-              "minLength": 1,
+              "pattern": "^[a-zA-Z0-9_]([a-zA-Z0-9._-]*[a-zA-Z0-9_])?$",
               "type": "string"
             },
             {
@@ -391,7 +388,7 @@
         "cuda": {
           "anyOf": [
             {
-              "minLength": 1,
+              "pattern": "^[a-zA-Z0-9_]([a-zA-Z0-9._-]*[a-zA-Z0-9_])?$",
               "type": "string"
             },
             {
@@ -405,7 +402,7 @@
         "libc": {
           "anyOf": [
             {
-              "minLength": 1,
+              "pattern": "^[a-zA-Z0-9_]([a-zA-Z0-9._-]*[a-zA-Z0-9_])?$",
               "type": "string"
             },
             {
@@ -419,7 +416,7 @@
         "linux": {
           "anyOf": [
             {
-              "minLength": 1,
+              "pattern": "^[a-zA-Z0-9_]([a-zA-Z0-9._-]*[a-zA-Z0-9_])?$",
               "type": "string"
             },
             {
@@ -433,7 +430,7 @@
         "osx": {
           "anyOf": [
             {
-              "minLength": 1,
+              "pattern": "^[a-zA-Z0-9_]([a-zA-Z0-9._-]*[a-zA-Z0-9_])?$",
               "type": "string"
             },
             {
@@ -447,7 +444,7 @@
         "win": {
           "anyOf": [
             {
-              "minLength": 1,
+              "pattern": "^[a-zA-Z0-9_]([a-zA-Z0-9._-]*[a-zA-Z0-9_])?$",
               "type": "string"
             },
             {
@@ -491,21 +488,20 @@
       "description": "Configuration details for the install tool."
     },
     "dependencies": {
-      "additionalProperties": {
-        "anyOf": [
-          {
-            "minLength": 1,
-            "type": "string"
-          },
-          {
-            "$ref": "#/$defs/CondaPackageConstraints"
-          }
-        ]
-      },
       "default": {},
       "description": "conda packages to install. It must be a mapping of package names to package versions. Use `*` for the version if any version works. The value can also be an object that specifies version, build and/or channel.",
-      "propertyNames": {
-        "minLength": 1
+      "patternProperties": {
+        "^[a-zA-Z0-9_]([a-zA-Z0-9._-]*[a-zA-Z0-9_])?$": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/CondaPackageConstraints"
+            }
+          ]
+        }
       },
       "title": "Dependencies",
       "type": "object"
@@ -542,14 +538,13 @@
       "type": "object"
     },
     "pypi-dependencies": {
-      "additionalProperties": {
-        "minLength": 1,
-        "type": "string"
-      },
       "default": {},
       "description": "PyPI packages to install. It must be a mapping of package names to package versions. Use `*` for the version if any version works.",
-      "propertyNames": {
-        "minLength": 1
+      "patternProperties": {
+        "^[a-zA-Z0-9_]([a-zA-Z0-9._-]*[a-zA-Z0-9_])?$": {
+          "minLength": 1,
+          "type": "string"
+        }
       },
       "title": "Pypi-Dependencies",
       "type": "object"

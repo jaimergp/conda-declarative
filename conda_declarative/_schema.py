@@ -20,7 +20,9 @@ HERE = Path(__file__).parent
 SCHEMA_PATH = HERE / "data" / "conda-manifest.schema.json"
 NAME_REGEX = VERSION_REGEX = r"^[a-zA-Z0-9_]([a-zA-Z0-9._-]*[a-zA-Z0-9_])?$"
 ENV_NAME_REGEX = r"^[^/:# ]+$"
+NameStr = Annotated[str, Field(pattern=NAME_REGEX)]
 NonEmptyStr = Annotated[str, Field(min_length=1)]
+VersionStr = Annotated[str, Field(pattern=VERSION_REGEX)]
 _base_config_dict = ConfigDict(
     extra="forbid",
     use_attribute_docstrings=True,
@@ -53,11 +55,11 @@ class Project(BaseModel):
 
     model_config: ConfigDict = _base_config_dict
 
-    name: NonEmptyStr = ...
+    name: Annotated[str, Field(pattern=ENV_NAME_REGEX)] = ...
     """
     Name for this project.
     """
-    revision: NonEmptyStr = ...
+    revision: VersionStr = ...
     """
     A version-like string that allows maintainers to apply versioning schemes to this manifest file.
     """
@@ -94,17 +96,17 @@ class SystemRequirements(BaseModel):
 
     model_config: ConfigDict = _base_config_dict
 
-    libc: NonEmptyStr | None = None
+    libc: VersionStr | None = None
     "Version of the system libc (Linux only). Equivalent to setting `CONDA_OVERRIDE_GLIBC`."
-    cuda: NonEmptyStr | None = None
+    cuda: VersionStr | None = None
     "Version of CUDA. Equivalent to setting `CONDA_OVERRIDE_CUDA`."
-    osx: NonEmptyStr | None = None
+    osx: VersionStr | None = None
     "Version of macOS. Equivalent to setting `CONDA_OVERRIDE_OSX`."
-    linux: NonEmptyStr | None = None
+    linux: VersionStr | None = None
     "Version of the Linux kernel. Equivalent to setting `CONDA_OVERRIDE_LINUX`."
-    win: NonEmptyStr | None = None
+    win: VersionStr | None = None
     "Version of Windows in use. Equivalent to setting `CONDA_OVERRIDE_WIN`."
-    archspec: NonEmptyStr | None = None
+    archspec: VersionStr | None = None
     "System architecture name. Equivalent to setting `CONDA_OVERRIDE_ARCHSPEC`."
 
 
@@ -133,7 +135,7 @@ class CondaConfig(BaseModel):
         use_attribute_docstrings=True,
     )
 
-    aggressive_update_packages: list[NonEmptyStr] = Field(
+    aggressive_update_packages: list[NameStr] = Field(
         [],
         alias="aggressive-update-packages",
     )
@@ -161,7 +163,7 @@ class CondaConfig(BaseModel):
     `conda` is running on, but can be extended to additional ones to, for example,
     generate lockfiles on each update.
     """
-    pinned_packages: dict[NonEmptyStr, NonEmptyStr | CondaPackageConstraints] = Field(
+    pinned_packages: dict[NameStr, NonEmptyStr | CondaPackageConstraints] = Field(
         {},
         alias="pinned-packages",
     )
@@ -204,13 +206,13 @@ class PlatformSpecificFields(BaseModel):
         alias="system-requirements",
         help=SystemRequirements.__doc__,
     )
-    dependencies: dict[NonEmptyStr, NonEmptyStr | CondaPackageConstraints] = {}
+    dependencies: dict[NameStr, NonEmptyStr | CondaPackageConstraints] = {}
     """
     conda packages to install. It must be a mapping of package names to package versions.
     Use `*` for the version if any version works. The value can also be an object that
     specifies version, build and/or channel.
     """
-    pypi_dependencies: dict[NonEmptyStr, NonEmptyStr] = Field(
+    pypi_dependencies: dict[NameStr, NonEmptyStr] = Field(
         {}, alias="pypi-dependencies"
     )
     """
