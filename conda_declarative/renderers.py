@@ -56,6 +56,8 @@ class TuiReporterRenderer(ReporterRendererBase):
     def detail_view(self, data: dict[str, str | int | bool], **kwargs) -> str:  # noqa: ARG002
         """Render the output in tabular format.
 
+        Unused.
+
         Parameters
         ----------
         data : dict[str, str | int | bool]
@@ -66,12 +68,14 @@ class TuiReporterRenderer(ReporterRendererBase):
         Returns
         -------
         str
-            A table of data
+            An empty string
         """
         return ""
 
     def envs_list(self, data: Iterable[PathType], **kwargs) -> str:  # noqa: ARG002
         """Render a list of environments.
+
+        Unused.
 
         Parameters
         ----------
@@ -83,8 +87,7 @@ class TuiReporterRenderer(ReporterRendererBase):
         Returns
         -------
         str
-
-
+            An empty string
         """
         return ""
 
@@ -151,7 +154,10 @@ class TuiReporterRenderer(ReporterRendererBase):
 
 
 class TuiSpinner(SpinnerBase):
-    """Conda spinner which passes spinner state to the TUI."""
+    """Conda spinner which passes spinner state to the TUI.
+
+    The spinner is only shown during the time it is active as a context manager.
+    """
 
     def __init__(self, message: str, failed_message: str):
         super().__init__(message, failed_message)

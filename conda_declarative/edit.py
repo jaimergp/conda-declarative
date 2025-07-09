@@ -167,9 +167,6 @@ class EditApp(App):
     #editor {
         height: 1fr;
     }
-    #progress-bar {
-
-    }
     """
 
     def __init__(
@@ -252,7 +249,13 @@ class EditApp(App):
         self.spinner.show()
 
     def spinner_set_text(self, text: str):
-        """Set the text on the spinner widget."""
+        """Set the text on the spinner widget.
+
+        Parameters
+        ----------
+        text : str
+            Text to display
+        """
         self.spinner.set_text(text)
 
     @on(DataTable.HeaderSelected)
