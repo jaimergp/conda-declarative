@@ -138,7 +138,6 @@ def link(
         )
     )
 
-    #
     handle_txn(
         unlink_link_transaction=txn,
         prefix=prefix,
