@@ -150,7 +150,6 @@ class EditApp(App):
     DEFAULT_CSS = """
     HidableProgressBar {
         visibility: visible;
-        border: solid red;
     }
     HidableProgressBar.hidden {
         visibility: hidden;
