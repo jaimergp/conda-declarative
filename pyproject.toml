@@ -28,6 +28,7 @@ dependencies = [
   "tomli-w",
   "textual>=3.3.0",
   "textual[syntax]",
+  "textual-dev",
 ]
 dynamic = ["version"]
 
@@ -54,6 +55,7 @@ conda-declarative = { path  = ".", editable = true }
 
 [tool.pixi.tasks]
 conda = "python -m conda"
+textual = "textual"
 
 [tool.pixi.feature.build]
 dependencies = { conda-build = "*" }

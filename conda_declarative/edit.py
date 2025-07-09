@@ -17,8 +17,8 @@ from collections.abc import Iterable
 
 from conda.models.match_spec import MatchSpec
 from conda.models.records import PrefixRecord
-from conda.plugins.types import CondaReporterBackend
 from conda.plugins.virtual_packages.cuda import cached_cuda_version
+from rich.spinner import Spinner
 from rich.style import Style
 from rich.text import Text as RichText
 from textual import on
@@ -31,12 +31,14 @@ from textual.widgets import (
     DataTable,
     Footer,
     Label,
+    ProgressBar,
+    Static,
     TextArea,
 )
 
+from . import app
 from .apply import apply, solve
 from .constants import CONDA_MANIFEST_FILE
-from .renderers import TuiReporterRenderer
 from .state import dict_to_env, update_state
 from .util import set_conda_console
 
@@ -78,6 +80,64 @@ class SortOrder(Enum):
     DESC = "descending"
 
 
+class SpinnerWidget(Static):
+    """Textual widget which displays a spinner."""
+
+    DEFAULT_CLASSES = "hidden"
+    DEFAULT_CSS = """
+    SpinnerWidget {
+        visibility: visible;
+    }
+    SpinnerWidget.hidden {
+        visibility: hidden;
+    }
+    """
+
+    def __init__(self):
+        super().__init__("")
+        self._spinner = Spinner("dots")
+
+    def on_mount(self) -> None:
+        """Set the update interval of the spinner."""
+        self.update_render = self.set_interval(1 / 60, self.update_spinner)
+
+    def update_spinner(self) -> None:
+        """Update the spinner status."""
+        self.update(self._spinner)
+
+    def set_text(self, text: str) -> None:
+        """Set the text next to the spinner.
+
+        Parameters
+        ----------
+        text : str
+            Text to display
+        """
+        self._spinner.update(text=text)
+
+    def hide(self):
+        """Hide the spinner."""
+        self.add_class("hidden")
+
+    def show(self):
+        """Show the spinner."""
+        self.remove_class("hidden")
+
+
+class HidableProgressBar(ProgressBar):
+    """A progress bar that can be easily hidden."""
+
+    DEFAULT_CLASSES = "hidden"
+
+    def hide(self):
+        """Hide the progress bar."""
+        self.add_class("hidden")
+
+    def show(self):
+        """Show the progress bar."""
+        self.remove_class("hidden")
+
+
 class EditApp(App):
     """Main application which runs upon `conda edit`."""
 
@@ -88,6 +148,13 @@ class EditApp(App):
     ]
 
     DEFAULT_CSS = """
+    HidableProgressBar {
+        visibility: visible;
+        border: solid red;
+    }
+    HidableProgressBar.hidden {
+        visibility: hidden;
+    }
     #output {
         height: 1fr;
     }
@@ -100,6 +167,9 @@ class EditApp(App):
     #editor {
         height: 1fr;
     }
+    #progress-bar {
+
+    }
     """
 
     def __init__(
@@ -107,7 +177,6 @@ class EditApp(App):
         filename: os.PathLike,
         prefix: os.PathLike,
         subdirs: tuple[str, str],
-        reporter_backend: CondaReporterBackend,
     ):
         super().__init__()
 
@@ -129,9 +198,8 @@ class EditApp(App):
         self.initial_text = text
         self.editor = TextArea.code_editor(text=text, language="toml", id="editor")
         self.editor_label = Label()
-        self.reporter_renderer: TuiReporterRenderer = reporter_backend.renderer()
-        self.progress_bar = self.reporter_renderer.progress_bar("")
-        self.spinner = self.reporter_renderer.spinner("", "")
+        self.progress_bar = HidableProgressBar(total=1.0)
+        self.spinner = SpinnerWidget()
         self.progress_label = Label()
 
         self.table = DataTable(id="output", cursor_type="row")
@@ -144,6 +212,20 @@ class EditApp(App):
         self.current_solution: Iterable[PrefixRecord] | None = None
 
         self.set_status("done")
+
+    def set_progress(self, fraction: float):
+        """Set the progress bar fraction to the specified amount.
+
+        Parameters
+        ----------
+        fraction : float
+            Fraction to set the progress bar to. Must be in the range [0, 1]
+        """
+        self.progress_bar.update(progress=fraction)
+        if fraction in [0.0, 1.0]:
+            self.progress_bar.hide()
+        else:
+            self.progress_bar.show()
 
     def set_status(self, text: str) -> None:
         """Set the progress label to the given text.
@@ -160,6 +242,18 @@ class EditApp(App):
             label += "..."
 
         self.progress_label.update(f"{label:<30}")
+
+    def spinner_hide(self):
+        """Hide the spinner widget."""
+        self.spinner.hide()
+
+    def spinner_show(self):
+        """Show the spinner widget."""
+        self.spinner.show()
+
+    def spinner_set_text(self, text: str):
+        """Set the text on the spinner widget."""
+        self.spinner.set_text(text)
 
     @on(DataTable.HeaderSelected)
     async def handle_header_selected(self, event: DataTable.HeaderSelected) -> None:
@@ -395,8 +489,8 @@ class EditApp(App):
                         + Text("          Unchanged package", style="default")
                     )
                     with Horizontal():
-                        yield self.progress_bar.widget()
-                        yield self.spinner.widget()
+                        yield self.progress_bar
+                        yield self.spinner
                         yield self.progress_label
         yield Footer()
 
@@ -468,14 +562,20 @@ class EditApp(App):
     async def run_sync(self):
         """Save the current file, then apply it to the current environment."""
         self.set_status("applying")
-        with set_conda_console():
-            await asyncio.to_thread(
-                apply,
-                prefix=self.prefix,
-                quiet=True,
-                dry_run=False,
-                lock_only=False,
+        try:
+            with set_conda_console():
+                await asyncio.to_thread(
+                    apply,
+                    prefix=self.prefix,
+                    quiet=True,
+                    dry_run=False,
+                    lock_only=False,
+                )
+        except Exception as e:
+            self.notify(
+                f"Exception while applying the environment: {e}", severity="error"
             )
+
         self.set_status("done")
 
 
@@ -536,7 +636,6 @@ class QuitModal(ModalScreen):
 def run_editor(
     prefix: PathType,
     subdirs: tuple[str, str],
-    reporter_backend: CondaReporterBackend,
 ) -> None:
     """Launch the textual editor.
 
@@ -547,13 +646,9 @@ def run_editor(
         for
     subdirs : tuple[str, str]
         Subdirectories known by conda; see docs for `context.subdirs`
-    reporter_backend : CondaReporterBackend
-        Reporter backend to use for displaying progress
     """
-    app = EditApp(
-        Path(prefix, CONDA_MANIFEST_FILE),
-        Path(prefix),
-        subdirs,
-        reporter_backend,
-    )
-    app.run()
+    if app.app is None:
+        app.app = EditApp(Path(prefix, CONDA_MANIFEST_FILE), Path(prefix), subdirs)
+        app.app.run()
+    else:
+        raise RuntimeError("App is already running.")

@@ -11,19 +11,18 @@ from conda.plugins.types import (
     ProgressBarBase,
     ReporterRendererBase,
 )
-from rich.spinner import Spinner
-from textual.widgets import ProgressBar, Static
+
+from . import app
 
 if TYPE_CHECKING:
     from conda.common.path import PathType
 
 
 class TuiProgressBar(ProgressBarBase):
-    """Conda progress bar is also a textual progress bar widget."""
+    """Conda progress bar which updates a textual progress bar in the TUI."""
 
-    def __init__(self, description):
-        super().__init__(description=description)
-        self._progress_bar = ProgressBar()
+    def __init__(self, description: str, **kwargs):
+        super().__init__(description=description, **kwargs)
 
     def update_to(self, fraction: float) -> None:
         """Update the progress bar to the specified fraction.
@@ -33,7 +32,8 @@ class TuiProgressBar(ProgressBarBase):
         fraction : float
             Fraction to set the progress bar to
         """
-        self._progress_bar.progress = fraction
+        if app.app:
+            app.app.set_progress(fraction)
 
     def refresh(self) -> None:
         """Redraw the progress bar."""
@@ -41,11 +41,8 @@ class TuiProgressBar(ProgressBarBase):
 
     def close(self) -> None:
         """Close out the progress bar."""
-        self._progress_bar.progress = 1.0
-
-    def widget(self) -> ProgressBar:
-        """Return the wrapped textual widget."""
-        return self._progress_bar
+        if app.app:
+            app.app.set_progress(1.0)
 
 
 class TuiReporterRenderer(ReporterRendererBase):
@@ -53,8 +50,8 @@ class TuiReporterRenderer(ReporterRendererBase):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._progress_bar = None
-        self._spinner = None
+        self._progress_bar: TuiProgressBar = None
+        self._spinner: TuiSpinner = None
 
     def detail_view(self, data: dict[str, str | int | bool], **kwargs) -> str:  # noqa: ARG002
         """Render the output in tabular format.
@@ -111,7 +108,7 @@ class TuiReporterRenderer(ReporterRendererBase):
         return self._progress_bar
 
     def spinner(self, message: str, failed_message: str) -> TuiSpinner:
-        """Return the spinner class instance for rendering.
+        """Return the conda spinner class instance.
 
         Parameters
         ----------
@@ -122,7 +119,7 @@ class TuiReporterRenderer(ReporterRendererBase):
 
         Returns
         -------
-        SpinnerBase
+        TuiSpinner
             Spinner to be displayed
         """
         if self._spinner is None:
@@ -131,7 +128,7 @@ class TuiReporterRenderer(ReporterRendererBase):
         self._spinner.set_text(message)
         return self._spinner
 
-    def prompt(self, message: str, choices: list[str], default: str) -> str:
+    def prompt(self, message: str, choices: list[str], default: str) -> str:  # noqa: ARG002
         """Prompt to use when user input is required.
 
         Unused here.
@@ -154,14 +151,14 @@ class TuiReporterRenderer(ReporterRendererBase):
 
 
 class TuiSpinner(SpinnerBase):
-    """Conda spinner which wraps a textual spinner widget."""
+    """Conda spinner which passes spinner state to the TUI."""
 
     def __init__(self, message: str, failed_message: str):
         super().__init__(message, failed_message)
-        self._spinner = SpinnerWidget()
 
     def __enter__(self, *args, **kwargs):
-        self._spinner.show()
+        if app.app:
+            app.app.spinner_show()
 
     def __exit__(
         self,
@@ -169,51 +166,16 @@ class TuiSpinner(SpinnerBase):
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ):
-        self._spinner.hide()
+        if app.app:
+            app.app.spinner_hide()
 
     def set_text(self, text: str):
-        """Set the text on the child spinner widget.
+        """Set the text on the spinner widget.
 
         Parameters
         ----------
         text : str
             Text for the spinner to display
         """
-        self._spinner.set_text(text)
-
-    def widget(self):
-        """Return the wrapped textual widget."""
-        return self._spinner
-
-
-class SpinnerWidget(Static):
-    """Textual widget which displays a spinner."""
-
-    DEFAULT_CLASSES = "hidden"
-    DEFAULT_CSS = """
-    SpinnerWidget {
-        visibility: visible;
-    }
-    SpinnerWidget.hidden {
-        visibility: hidden;
-    }
-    """
-
-    def __init__(self):
-        super().__init__("")
-        self._spinner = Spinner("dots")
-
-    def on_mount(self) -> None:
-        self.update_render = self.set_interval(1 / 60, self.update_spinner)
-
-    def update_spinner(self) -> None:
-        self.update(self._spinner)
-
-    def set_text(self, text: str) -> None:
-        self._spinner.update(text=text)
-
-    def hide(self):
-        self.classes = "hidden"
-
-    def show(self):
-        self.classes = ""
+        if app.app:
+            app.app.spinner_set_text(text)

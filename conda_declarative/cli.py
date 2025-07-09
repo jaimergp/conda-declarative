@@ -56,9 +56,7 @@ def execute_edit(args: argparse.Namespace) -> int:
         print(manifest_path)
         return 0
 
-    run_editor(
-        prefix, context.subdirs, context.plugin_manager.get_reporter_backend("tui")
-    )
+    run_editor(prefix, context.subdirs)
 
     if not args.apply:  # nothing else to do
         return 0

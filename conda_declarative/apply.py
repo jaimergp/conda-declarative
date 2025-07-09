@@ -137,7 +137,15 @@ def link(
             neutered_specs=(),
         )
     )
-    handle_txn(txn, prefix, args, False, True)
+
+    #
+    handle_txn(
+        unlink_link_transaction=txn,
+        prefix=prefix,
+        args=args,
+        newenv=False,
+        remove_op=False,  # Must be False, unless `args.package_names` is provided
+    )
     return txn
 
 
@@ -196,76 +204,3 @@ def apply(
         raise LockOnlyExit()
 
     link(prefix=context.target_prefix, records=records, args=args)
-
-
-# def handle_txn(
-#     unlink_link_transaction: UnlinkLinkTransaction,
-#     prefix: str,
-#     package_names: Iterable[MatchSpec | PackageRecord | str] | None,
-#     newenv: bool = False,
-#     remove_op: bool = False,
-# ):
-#     """Handle the transaction.
-#
-#     Parameters
-#     ----------
-#     unlink_link_transaction : UnlinkLinkTransaction
-#         Transaction to carry out
-#     prefix : str
-#         Prefix in which the transaction should be carried out
-#     package_names : Iterable[MatchSpec | PackageRecord | str] | None
-#
-#     newenv : bool
-#         If True, and `context.subdir` is not the native subdir for the system,
-#         the `subdir` config option in .condarc will be modified to include
-#         `context.subdir`.
-#     remove_op : bool
-#
-#
-#     """
-#     if unlink_link_transaction.nothing_to_do:
-#         if remove_op:
-#             # No packages found to remove from environment
-#             if package_names is None:
-#                 package_names = []
-#
-#             raise PackagesNotFoundError(package_names)
-#         elif not newenv:
-#             if context.json:
-#                 common.stdout_json_success(
-#                     message="All requested packages already installed."
-#                 )
-#             else:
-#                 print("\n# All requested packages already installed.\n")
-#             return
-#
-#     if not context.json:
-#         unlink_link_transaction.print_transaction_summary()
-#         confirm_yn()
-#
-#     elif context.dry_run:
-#         actions = unlink_link_transaction._make_legacy_action_groups()[0]
-#         common.stdout_json_success(prefix=prefix, actions=actions, dry_run=True)
-#         raise DryRunExit()
-#
-#     try:
-#         unlink_link_transaction.download_and_extract()
-#         if context.download_only:
-#             raise CondaExitZero(
-#                 "Package caches prepared. UnlinkLinkTransaction cancelled with "
-#                 "--download-only option."
-#             )
-#         unlink_link_transaction.execute()
-#
-#     except SystemExit as e:
-#         raise CondaSystemExit("Exiting", e) from None
-#
-#     if newenv and context.subdir != context._native_subdir():
-#         set_keys(
-#             ("subdir", context.subdir),
-#             path=Path(prefix, ".condarc"),
-#         )
-#
-#     if context.json:
-#         actions = unlink_link_transaction._make_legacy_action_groups()[0]
-#         common.stdout_json_success(prefix=prefix, actions=actions)
