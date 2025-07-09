@@ -153,7 +153,7 @@ def apply(
     quiet: bool = False,
     dry_run: bool = False,
     lock_only: bool = False,
-    *args,
+    args: argparse.Namespace | None = None,
 ) -> None:
     """Read the env file, solve it, and then link the resulting transaction.
 
@@ -168,7 +168,7 @@ def apply(
     lock_only : bool
         If True, only lock the records in the target prefix - don't change the
         environment
-    *args
+    args : argparse.Namespace | None
         Any additional command line arguments to be passed to `link`. Currently,
         only `args.package_names` is used
     """
@@ -191,6 +191,9 @@ def apply(
         subdirs=context.subdirs,
         specs=requested_packages,
     )
+
+    if args is None:
+        args = argparse.Namespace()
 
     if not quiet:
         print(*records, sep="\n")  # This should be a diff'd report

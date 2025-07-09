@@ -144,7 +144,7 @@ class EditApp(App):
     BINDINGS = [
         Binding("ctrl+q", "quit", "Quit", priority=True),
         Binding("ctrl+s", "save", "Save", priority=True),
-        Binding("ctrl+e", "sync", "Sync", priority=True),
+        Binding("ctrl+e", "apply", "Apply", priority=True),
     ]
 
     DEFAULT_CSS = """
@@ -557,13 +557,13 @@ class EditApp(App):
         self.title = f"Editing {self.filename}"
         self.notify(f"Saved: {self.filename}")
 
-    async def action_sync(self) -> None:
-        """Run the save action, then run the sync action."""
+    async def action_apply(self) -> None:
+        """Run the save action, then apply the changes to the environment async."""
         self.action_save()
-        self.run_worker(self.run_sync(), exclusive=True)
+        self.run_worker(self.run_apply(), exclusive=True)
 
-    async def run_sync(self):
-        """Save the current file, then apply it to the current environment."""
+    async def run_apply(self):
+        """Apply the current env file to the target environment."""
         self.set_status("applying")
         try:
             with set_conda_console():
