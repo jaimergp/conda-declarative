@@ -83,7 +83,11 @@ class SortOrder(Enum):
 
 
 class SpinnerWidget(Static):
-    """Textual widget which displays a spinner."""
+    """Textual widget which displays a spinner.
+
+    See https://textual.textualize.io/blog/2022/11/24/spinners-and-progress-bars-in-textual/
+    for more inspiration.
+    """
 
     DEFAULT_CLASSES = "hidden"
     DEFAULT_CSS = """
