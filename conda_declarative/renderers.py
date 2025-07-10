@@ -1,5 +1,6 @@
-from __future__ import annotations
+from __future__ import annotations  # noqa: I001
 
+from uuid import uuid4
 from collections.abc import Iterable
 from types import TracebackType
 from typing import TYPE_CHECKING
@@ -24,9 +25,8 @@ class TuiProgressBar(ProgressBarBase):
     def __init__(self, description: str, **kwargs):
         super().__init__(description=description, **kwargs)
         if app.app:
-            self.bar = app.app.add_progress_bar(description)
-        else:
-            self.bar = None
+            self.uuid = uuid4()
+            app.app.call_from_thread(app.app.add_bar, self.uuid, description)
 
     def update_to(self, fraction: float) -> None:
         """Update the progress bar to the specified fraction.
@@ -36,8 +36,8 @@ class TuiProgressBar(ProgressBarBase):
         fraction : float
             Fraction to set the progress bar to
         """
-        if self.bar:
-            self.bar.set_progress(fraction)
+        if app.app:
+            app.app.call_from_thread(app.app.update_bar, self.uuid, fraction)
 
     def refresh(self) -> None:
         """Redraw the progress bar."""
@@ -45,8 +45,8 @@ class TuiProgressBar(ProgressBarBase):
 
     def close(self) -> None:
         """Close out the progress bar."""
-        if self.bar:
-            app.app.remove_progress_bar(self.bar)
+        if app.app:
+            app.app.call_from_thread(app.app.remove_bar, self.uuid)
 
 
 class TuiReporterRenderer(ReporterRendererBase):
