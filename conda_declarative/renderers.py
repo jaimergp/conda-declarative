@@ -23,6 +23,10 @@ class TuiProgressBar(ProgressBarBase):
 
     def __init__(self, description: str, **kwargs):
         super().__init__(description=description, **kwargs)
+        if app.app:
+            self.bar = app.app.add_progress_bar(description)
+        else:
+            self.bar = None
 
     def update_to(self, fraction: float) -> None:
         """Update the progress bar to the specified fraction.
@@ -32,8 +36,8 @@ class TuiProgressBar(ProgressBarBase):
         fraction : float
             Fraction to set the progress bar to
         """
-        if app.app:
-            app.app.set_progress(fraction)
+        if self.bar:
+            self.bar.set_progress(fraction)
 
     def refresh(self) -> None:
         """Redraw the progress bar."""
@@ -41,17 +45,12 @@ class TuiProgressBar(ProgressBarBase):
 
     def close(self) -> None:
         """Close out the progress bar."""
-        if app.app:
-            app.app.set_progress(1.0)
+        if self.bar:
+            app.app.remove_progress_bar(self.bar)
 
 
 class TuiReporterRenderer(ReporterRendererBase):
     """Conda reporter that passes messages and progress to the TUI."""
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._progress_bar: TuiProgressBar = None
-        self._spinner: TuiSpinner = None
 
     def detail_view(self, data: dict[str, str | int | bool], **kwargs) -> str:  # noqa: ARG002
         """Render the output in tabular format.
@@ -106,9 +105,7 @@ class TuiReporterRenderer(ReporterRendererBase):
         TuiProgressBar
             Progress bar which reports progress to the TUI
         """
-        if self._progress_bar is None:
-            self._progress_bar = TuiProgressBar(description)
-        return self._progress_bar
+        return TuiProgressBar(description)
 
     def spinner(self, message: str, failed_message: str) -> TuiSpinner:
         """Return the conda spinner class instance.
@@ -125,11 +122,7 @@ class TuiReporterRenderer(ReporterRendererBase):
         TuiSpinner
             Spinner to be displayed
         """
-        if self._spinner is None:
-            self._spinner = TuiSpinner(message, failed_message)
-
-        self._spinner.set_text(message)
-        return self._spinner
+        return TuiSpinner(message, failed_message)
 
     def prompt(self, message: str, choices: list[str], default: str) -> str:  # noqa: ARG002
         """Prompt to use when user input is required.

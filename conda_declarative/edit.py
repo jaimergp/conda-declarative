@@ -25,7 +25,7 @@ from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Center, Container, Horizontal, Vertical
-from textual.screen import ModalScreen
+from textual.screen import ModalScreen, Screen
 from textual.widgets import (
     Button,
     DataTable,
@@ -138,6 +138,45 @@ class HidableProgressBar(ProgressBar):
         self.remove_class("hidden")
 
 
+class LabeledProgressBar(ProgressBar):
+    def __init__(self, text: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.text = text
+
+    def compose(self):
+        with Horizontal():
+            yield Label(self.text)
+            yield from super().compose()
+
+
+class ProgressBarScreen(Screen):
+    DEFAULT_CSS = """
+    ProgressBarScreen > Vertical {
+        dock: right;
+        width: 20%;
+        background: transparent;
+    }
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.bars = []
+
+    def compose(self):
+        with Vertical(id="progress-bar-area"):
+            yield from self.bars
+
+    def new_bar(self, text: str) -> LabeledProgressBar:
+        bar = LabeledProgressBar(text=text, total=1.0)
+        self.bars.append(bar)
+        return bar
+
+    def remove_bar(self, bar: LabeledProgressBar):
+        try:
+            self.bars.remove(bar)
+        except ValueError as e:
+            pass
+
+
 class EditApp(App):
     """Main application which runs upon `conda edit`."""
 
@@ -194,7 +233,7 @@ class EditApp(App):
         self.initial_text = text
         self.editor = TextArea.code_editor(text=text, language="toml", id="editor")
         self.editor_label = Label()
-        self.progress_bar = HidableProgressBar(total=1.0)
+        self.progress_bar_area = ProgressBarScreen()
         self.spinner = SpinnerWidget()
         self.progress_label = Label()
 
@@ -209,19 +248,15 @@ class EditApp(App):
 
         self.set_status("done")
 
-    def set_progress(self, fraction: float):
-        """Set the progress bar fraction to the specified amount.
+    def add_progress_bar(self, description: str) -> LabeledProgressBar:
+        if self.progress_bar_area.bars:
+            self.push_screen(self.progress_bar_area)
+        return self.progress_bar_area.new_bar(description)
 
-        Parameters
-        ----------
-        fraction : float
-            Fraction to set the progress bar to. Must be in the range [0, 1]
-        """
-        self.progress_bar.update(progress=fraction)
-        if fraction in [0.0, 1.0]:
-            self.progress_bar.hide()
-        else:
-            self.progress_bar.show()
+    def remove_progress_bar(self, bar: LabeledProgressBar):
+        self.progress_bar_area.remove_bar(bar)
+        if self.progress_bar_area.bars:
+            self.pop_screen()
 
     def set_status(self, text: str) -> None:
         """Set the progress label to the given text.
@@ -491,7 +526,6 @@ class EditApp(App):
                         + Text("          Unchanged package", style="default")
                     )
                     with Horizontal():
-                        yield self.progress_bar
                         yield self.spinner
                         yield self.progress_label
         yield Footer()
