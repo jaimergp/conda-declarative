@@ -11,7 +11,7 @@ from conda.base.context import reset_context
 def set_conda_console() -> Generator[None, None, None]:
     """Set the context.console config variable to "tui" to use the TUI plugin.
 
-    Upon cleanup, the
+    Upon cleanup, the context is reset once again.
 
     Returns
     -------

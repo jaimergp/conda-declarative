@@ -1,5 +1,6 @@
-from __future__ import annotations
+from __future__ import annotations  # noqa: I001
 
+from uuid import uuid4
 from collections.abc import Iterable
 from types import TracebackType
 from typing import TYPE_CHECKING
@@ -11,17 +12,21 @@ from conda.plugins.types import (
     ProgressBarBase,
     ReporterRendererBase,
 )
-from textual.app import App
+
+from . import app
 
 if TYPE_CHECKING:
     from conda.common.path import PathType
 
 
 class TuiProgressBar(ProgressBarBase):
-    """Conda progress bar that passes progress info to the TUI."""
+    """Conda progress bar which updates a textual progress bar in the TUI."""
 
-    def __init__(self):
-        super().__init__(description="")
+    def __init__(self, description: str, **kwargs):
+        super().__init__(description=description, **kwargs)
+        if app.app:
+            self.uuid = uuid4()
+            app.app.call_from_thread(app.app.add_bar, self.uuid, description)
 
     def update_to(self, fraction: float) -> None:
         """Update the progress bar to the specified fraction.
@@ -31,7 +36,8 @@ class TuiProgressBar(ProgressBarBase):
         fraction : float
             Fraction to set the progress bar to
         """
-        pass
+        if app.app:
+            app.app.call_from_thread(app.app.update_bar, self.uuid, fraction)
 
     def refresh(self) -> None:
         """Redraw the progress bar."""
@@ -39,31 +45,17 @@ class TuiProgressBar(ProgressBarBase):
 
     def close(self) -> None:
         """Close out the progress bar."""
-        pass
+        if app.app:
+            app.app.call_from_thread(app.app.remove_bar, self.uuid)
 
 
 class TuiReporterRenderer(ReporterRendererBase):
     """Conda reporter that passes messages and progress to the TUI."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.app = None
-
-    def register_app(self, app: App):
-        """Register a TUI app with the renderer.
-
-        Once registered, messages sent from conda will be
-        passed to the app.
-
-        Parameters
-        ----------
-        app : App
-            TUI app instance to which conda output will be passed
-        """
-        self.app = app
-
     def detail_view(self, data: dict[str, str | int | bool], **kwargs) -> str:  # noqa: ARG002
         """Render the output in tabular format.
+
+        Unused.
 
         Parameters
         ----------
@@ -75,12 +67,14 @@ class TuiReporterRenderer(ReporterRendererBase):
         Returns
         -------
         str
-            A table of data
+            An empty string
         """
         return ""
 
     def envs_list(self, data: Iterable[PathType], **kwargs) -> str:  # noqa: ARG002
         """Render a list of environments.
+
+        Unused.
 
         Parameters
         ----------
@@ -92,8 +86,7 @@ class TuiReporterRenderer(ReporterRendererBase):
         Returns
         -------
         str
-
-
+            An empty string
         """
         return ""
 
@@ -112,10 +105,10 @@ class TuiReporterRenderer(ReporterRendererBase):
         TuiProgressBar
             Progress bar which reports progress to the TUI
         """
-        return TuiProgressBar()
+        return TuiProgressBar(description)
 
-    def spinner(self, message: str, failed_message: str) -> SpinnerBase:
-        """Return the spinner class instance for rendering.
+    def spinner(self, message: str, failed_message: str) -> TuiSpinner:
+        """Return the conda spinner class instance.
 
         Parameters
         ----------
@@ -126,12 +119,12 @@ class TuiReporterRenderer(ReporterRendererBase):
 
         Returns
         -------
-        SpinnerBase
+        TuiSpinner
             Spinner to be displayed
         """
         return TuiSpinner(message, failed_message)
 
-    def prompt(self, message: str, choices: list[str], default: str) -> str:
+    def prompt(self, message: str, choices: list[str], default: str) -> str:  # noqa: ARG002
         """Prompt to use when user input is required.
 
         Unused here.
@@ -150,14 +143,21 @@ class TuiReporterRenderer(ReporterRendererBase):
         str
             User-provided input
         """
-        pass
+        return default
 
 
 class TuiSpinner(SpinnerBase):
-    """Dummy spinner which swallows spinner output from conda."""
+    """Conda spinner which passes spinner state to the TUI.
+
+    The spinner is only shown during the time it is active as a context manager.
+    """
+
+    def __init__(self, message: str, failed_message: str):
+        super().__init__(message, failed_message)
 
     def __enter__(self, *args, **kwargs):
-        return
+        if app.app:
+            app.app.spinner_show()
 
     def __exit__(
         self,
@@ -165,4 +165,16 @@ class TuiSpinner(SpinnerBase):
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ):
-        return
+        if app.app:
+            app.app.spinner_hide()
+
+    def set_text(self, text: str):
+        """Set the text on the spinner widget.
+
+        Parameters
+        ----------
+        text : str
+            Text for the spinner to display
+        """
+        if app.app:
+            app.app.spinner_set_text(text)
