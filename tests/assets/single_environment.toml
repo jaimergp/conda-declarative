@@ -1,0 +1,34 @@
+# https://docs.google.com/document/d/1Q_M66kFGCYLuaqAqez_jlsqxnQEQh5tSUBtvEz3ixdA/edit?tab=t.styv1cfnnyqy
+version = 1
+
+[about]  # static metadata, shouldn't change too much
+name = "workspace-name"
+revision = "2025.06.26"  # free version-like field for users to "bump" their envs
+description = "Free text, supporting markdown"
+authors = []
+license = ""  # SPDX expression
+license-files = [] # PEP 639 style
+
+[about.urls]
+
+[config]  # maps to Environment.config, also `conda config`
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[config.variables]
+SOME = "VARIABLE"
+
+[system-requirements]
+# pre-requisite before the solver even runs!
+# these are the lower bounds for the equivalent virtual packages
+libc = "2.17"  # CONDA_OVERRIDE_GLIBC=2.17
+cuda = "12.0"  # CONDA_OVERRIDE_CUDA=12.0
+
+[dependencies]
+python = ">=3.10"  # We keep key:value
+
+[platform.win-64.dependencies]  # we have changed 'target' -> 'platform'
+pywin32 = "*"
+
+[pypi-dependencies]
+example = "*"
