@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 from copy import copy
+from dataclasses import fields
 from pathlib import Path
 from pprint import pformat
 from textwrap import indent
 from typing import Annotated, Any
 from warnings import warn
 
-from conda.models.environment import Environment
+try:
+    from tomllib import loads
+except ImportError:
+    from tomli import loads
+
+from conda.base.context import context
+from conda.models.environment import Environment, EnvironmentConfig
 from conda.models.match_spec import MatchSpec
 from conda.plugins.types import EnvironmentSpecBase
 from pydantic import (
@@ -27,7 +34,8 @@ def as_dict(value: dict[str, str | dict[str, str]]) -> list[dict[str, str]]:
     """Coerce a raw dependency to a dict.
 
     Dependencies can either be strings, or dicts
-    which can be parsed to MatchSpec.
+    which can be parsed to MatchSpec, or dicts which can be parsed
+    as EditablePackage.
 
     Parameters
     ----------
@@ -60,7 +68,8 @@ class TomlSpec(EnvironmentSpecBase):
     """Implementation of conda's EnvironmentSpec which can handle toml files."""
 
     def __init__(self, filename: str):
-        self.filename = filename
+        self.filename = Path(filename)
+        self._environment: Environment | None = None
 
     def can_handle(self) -> bool:
         """Return whether the file passed to this class can be parsed.
@@ -71,16 +80,38 @@ class TomlSpec(EnvironmentSpecBase):
             True if the file can be parsed (it exists and is a toml file), False
             otherwise
         """
-        if self.filename is None:
-            return False
+        if self.filename.exists() and self.filename.suffix == "toml":
+            try:
+                self._load_toml()
+                return True
+            except Exception:
+                pass
 
-        file = Path(self.filename)
-        return file.exists() and file.suffix == "toml"
+        return False
+
+    def _load_toml(self) -> None:
+        """Load a TOML file and use it to construct an Environment."""
+        with open(self.filename) as f:
+            model = TomlSingleEnvironment.model_validate(loads(f.read()))
+
+        self._environment = Environment(
+            prefix=context.target_prefix,
+            platform=context.subdir,
+            config=combine(
+                EnvironmentConfig.from_context(), model.config.get_environment_config()
+            ),
+            external_packages=model.get_external_packages(),
+            name=model.about.name,
+            requested_packages=model.get_requested_packages(),
+            variables=model.config.variables,
+        )
 
     @property
     def env(self) -> Environment:
         """Generate an Environment from the provided TOML file."""
-        return Environment()
+        if self._environment is None:
+            self._load_toml()
+        return self._environment
 
 
 class Author(BaseModel):
@@ -118,6 +149,19 @@ class Config(BaseModel):
     channels: list[str] = []
     platforms: list[str] = []
     variables: dict[str, str] = {}
+
+    def get_environment_config(self) -> EnvironmentConfig:
+        """Populate an EnvironmentConfig with settings from this Config.
+
+        See `conda.models.environment.EnvironmentConfig`.
+
+        Returns
+        -------
+        EnvironmentConfig
+            Configuration for an environment. Only the fields present in Config
+            which are also in EnvironmentConfig are populated.
+        """
+        return EnvironmentConfig(channels=self.channels)
 
 
 class EditablePackage(BaseModel):
@@ -207,6 +251,30 @@ class TomlSingleEnvironment(TomlEnvironment):
         if not (data.get("dependencies") or data.get("pypi_dependencies")):
             raise ValueError
         return data
+
+    def get_requested_packages(self) -> list[MatchSpec]:
+        """Get the requested packages for the environment.
+
+        Returns
+        -------
+        list[MatchSpec]
+            A list of packages requested by the user. Does not include
+            any editable packages
+        """
+        return self.dependencies
+
+    def get_external_packages(self) -> dict[str, list[str]]:
+        """Get the external packages for the environment.
+
+        Returns
+        -------
+        dict[str, list[str]]
+            A mapping between installer names and packages to be installed
+            by each installer. For PyPI dependencies, this will be
+
+            {'pip': [<some package names>, ...]}
+        """
+        raise NotImplementedError
 
 
 class Group(BaseModel):
@@ -306,3 +374,33 @@ class TomlMultiEnvironment(TomlEnvironment):
             )
 
         return envs
+
+
+def combine(*configs) -> EnvironmentConfig:
+    """Combine EnvironmentConfig objects into a single object.
+
+    Like `conda.models.environment.EnvironmentConfig.merge`, except fields
+    of configs on the right always clobber fields in configs on the left.
+
+    Parameters
+    ----------
+    *configs
+        Configuration objects to combine
+
+    Returns
+    -------
+    EnvironmentConfig
+        The combined EnvironmentConfig object
+    """
+    assert all(isinstance(config, EnvironmentConfig) for config in configs)
+
+    env_config = configs[0]
+    for config in configs[1:]:
+        for field in fields(config):
+            value = getattr(config, field.name)
+            if value is None:
+                value = getattr(env_config, field.name)
+
+            setattr(env_config, field.name, value)
+
+    return env_config
