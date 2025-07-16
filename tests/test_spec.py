@@ -1,9 +1,42 @@
 import pytest
 from conda.base.context import context
 from conda.core.prefix_data import PrefixData
+from conda.models.channel import Channel
 from conda.models.environment import Environment
+from conda.models.records import PrefixRecord
+from packaging.version import Version
 
 from conda_declarative import spec
+
+
+def get_found_records(
+    requested: list[str], records: list[PrefixRecord]
+) -> tuple[list[PrefixRecord], list[PrefixRecord]]:
+    """Search the given records for a subset of requested records.
+
+    Splits the found records into conda and pip records.
+
+    Parameters
+    ----------
+    requested : list[str]
+        The specific records to be searched for
+    records : list[PrefixRecord]
+        The records being searched
+
+    Returns
+    -------
+    tuple[list[PrefixRecord], list[PrefixRecord]]
+        (requested conda records, requested pip records)
+    """
+    found_conda, found_pip = [], []
+    for record in records:
+        if record.name in requested:
+            if record.channel == Channel("pypi"):
+                found_pip.append(record)
+            else:
+                found_conda.append(record)
+
+    return found_conda, found_pip
 
 
 def test_parse_single_environment(single_environment_dict):
@@ -106,6 +139,7 @@ def test_toml_spec(single_environment_path):
 
 
 def test_populate_from_toml(tmpdir, conda_cli, single_environment_path):
+    """Test that the plugin can be used to create an environment."""
     specifier = context.plugin_manager.get_environment_specifier_by_name(
         source=single_environment_path,
         name="toml",
@@ -113,7 +147,12 @@ def test_populate_from_toml(tmpdir, conda_cli, single_environment_path):
     assert specifier.environment_spec is spec.TomlSpec
 
     prefix_data = PrefixData(tmpdir, interoperability=True)
+    records = list(prefix_data.iter_records())
+
+    # Before creating the environment, there should not be an environment
+    # at the target prefix
     assert not prefix_data.is_environment()
+    assert not records
 
     conda_cli(
         "env",
@@ -124,8 +163,25 @@ def test_populate_from_toml(tmpdir, conda_cli, single_environment_path):
         "--quiet",
     )
 
-    new_prefix_data = PrefixData(tmpdir, interoperability=True)
-    assert new_prefix_data.is_environment()
+    new_records = list(prefix_data.iter_records())
 
-    breakpoint()
-    print()
+    # The prefix data should now point to a valid environment
+    assert prefix_data.is_environment()
+    assert new_records
+
+    conda_requested, pip_requested = get_found_records(
+        ["python", "flask", "numpy"], new_records
+    )
+
+    # Check that the requested conda packages only contains "python",
+    # and that the version is compatible with the one specified in the spec file
+    assert set(("python",)) == set(pkg.name for pkg in conda_requested)
+    assert conda_requested[0].name == "python"
+    assert Version(conda_requested[0].version) >= Version("3.10")
+
+    # Check that the requested pip packages only contain "flask" and "numpy",
+    # and that the versions are compatible with the ones specified in the spec file
+    assert set(("flask", "numpy")) == set(pkg.name for pkg in pip_requested)
+    for pkg in pip_requested:
+        if pkg.name == "numpy":
+            assert Version(pkg.version) >= Version("2")

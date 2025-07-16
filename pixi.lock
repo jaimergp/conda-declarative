@@ -6635,8 +6635,8 @@ packages:
   timestamp: 1748431533324
 - pypi: ./
   name: conda-declarative
-  version: 0.1.dev13+g92b603f.d20250715
-  sha256: ce6996fa212ce486bcbe0911ff3c5f523480698da3a7b2fe36ba3474e4fb85a9
+  version: 0.1.dev15+ga3c7850.d20250716
+  sha256: 77d7b733e85fcb28f7e99944d591c59250bf869c8aab5aa80603c361a829005c
   requires_dist:
   - boltons
   - pydantic[email]>=2.11.7,<3
