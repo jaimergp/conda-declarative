@@ -108,7 +108,7 @@ def conda_reporter_backends():
 @plugins.hookimpl
 def conda_environment_specifiers():
     """Implement the TOML spec for conda."""
-    yield plugins.CondaEnvSpec(
+    yield plugins.CondaEnvironmentSpecifier(
         name="toml",
         environment_spec=spec.TomlSpec,
     )

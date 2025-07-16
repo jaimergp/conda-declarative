@@ -1,4 +1,6 @@
 import pytest
+from conda.base.context import context
+from conda.core.prefix_data import PrefixData
 from conda.models.environment import Environment
 
 from conda_declarative import spec
@@ -94,3 +96,36 @@ def test_toml_spec(single_environment_path):
 
     assert toml_spec.can_handle()
     assert isinstance(toml_spec.env, Environment)
+
+    assert toml_spec.env.variables == {"SOME": "VARIABLE"}
+    assert toml_spec.env.config.channels == ["conda-forge"]
+    assert toml_spec.env.external_packages == {"pip": ["example"]}
+    pkgs = [(pkg.name, str(pkg.version)) for pkg in toml_spec.env.requested_packages]
+
+    assert pkgs == [("python", ">=3.10")]
+
+
+def test_populate_from_toml(tmpdir, conda_cli, single_environment_path):
+    specifier = context.plugin_manager.get_environment_specifier_by_name(
+        source=single_environment_path,
+        name="toml",
+    )
+    assert specifier.environment_spec is spec.TomlSpec
+
+    prefix_data = PrefixData(tmpdir, interoperability=True)
+    assert not prefix_data.is_environment()
+
+    conda_cli(
+        "env",
+        "create",
+        f"--prefix={tmpdir}",
+        f"--file={single_environment_path}",
+        "--yes",
+        "--quiet",
+    )
+
+    new_prefix_data = PrefixData(tmpdir, interoperability=True)
+    assert new_prefix_data.is_environment()
+
+    breakpoint()
+    print()

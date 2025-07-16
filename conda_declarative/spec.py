@@ -64,7 +64,7 @@ def handle_pypi_dependencies(
                 #   example = "12.0"  # noqa: ERA001
                 items.append(f"{name}=={item}")
             else:
-                # Some version constraint specified
+                # Some version constraint is specified
                 #
                 #   example = ">=2.28.0,<3"  # noqa: ERA001
                 items.append(f"{name}{item}")

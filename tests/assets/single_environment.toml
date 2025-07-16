@@ -31,4 +31,5 @@ python = ">=3.10"  # We keep key:value
 pywin32 = "*"
 
 [pypi-dependencies]
-example = "*"
+flask = "*"
+numpy = ">=2"
