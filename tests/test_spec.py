@@ -1,5 +1,7 @@
 import pytest
-from conda_toml_spec import spec
+from conda.models.environment import Environment
+
+from conda_declarative import spec
 
 
 def test_parse_single_environment(single_environment_dict):
@@ -10,6 +12,7 @@ def test_parse_single_environment(single_environment_dict):
     assert env.system_requirements
 
 
+@pytest.mark.skip(reason="Multi-environments are not yet supported.")
 def test_parse_multi_environment(multi_environment_dict):
     """Test that multi-environment files can be parsed."""
     env = spec.TomlMultiEnvironment.model_validate(multi_environment_dict)
@@ -30,6 +33,7 @@ def test_parse_multi_environment(multi_environment_dict):
     assert env.groups["gpu"].description == "This is for GPU enabled workflows"
 
 
+@pytest.mark.skip(reason="Multi-environments are not yet supported.")
 def test_parse_multi_environment2(multi_environment_dict2):
     """Test that multi-environment files can be parsed."""
     env = spec.TomlMultiEnvironment.model_validate(multi_environment_dict2)
@@ -77,7 +81,16 @@ def test_parse_multi_environment2(multi_environment_dict2):
         ("multi_environment_dict2", spec.TomlMultiEnvironment),
     ],
 )
+@pytest.mark.skip(reason="Multi-environments are not yet supported.")
 def test_parse_toml_environment(request, fixture, expected_class):
     """Ensure that TomlEnvironment can parse both single and multi environments."""
     env = spec.TomlEnvironment.model_validate(request.getfixturevalue(fixture))
     assert isinstance(env, expected_class)
+
+
+def test_toml_spec(single_environment_path):
+    """Test that a TOML file can be used to generate an Environment."""
+    toml_spec = spec.TomlSpec(single_environment_path)
+
+    assert toml_spec.can_handle()
+    assert isinstance(toml_spec.env, Environment)

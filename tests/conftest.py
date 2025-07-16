@@ -58,7 +58,43 @@ def python_flask_prefix(tmp_env):
 
 
 @pytest.fixture
-def single_environment_dict() -> dict[str, Any]:
+def single_environment_path() -> Path:
+    """Return the path to a single environment toml file.
+
+    Returns
+    -------
+    Path
+        The toml environment file path
+    """
+    return Path(__file__).parent / "assets" / "single_environment.toml"
+
+
+@pytest.fixture
+def multi_environment_path() -> Path:
+    """Return the path to a multi environment toml file.
+
+    Returns
+    -------
+    Path
+        The toml environment file path
+    """
+    return Path(__file__).parent / "assets" / "multi_environment.toml"
+
+
+@pytest.fixture
+def multi_environment_path2() -> Path:
+    """Return the path to a multi environment toml file.
+
+    Returns
+    -------
+    Path
+        The toml environment file path
+    """
+    return Path(__file__).parent / "assets" / "multi_environment2.toml"
+
+
+@pytest.fixture
+def single_environment_dict(single_environment_path) -> dict[str, Any]:
     """Return a single environment toml file, parsed into a dict.
 
     Returns
@@ -66,12 +102,12 @@ def single_environment_dict() -> dict[str, Any]:
     dict[str, Any]
         The toml environment file, parsed into a dict
     """
-    with open(Path(__file__).parent / "assets" / "single_environment.toml") as f:
+    with open(single_environment_path) as f:
         return loads(f.read())
 
 
 @pytest.fixture
-def multi_environment_dict() -> dict[str, Any]:
+def multi_environment_dict(multi_environment_path) -> dict[str, Any]:
     """Return a multi environment toml file, parsed into a dict.
 
     Returns
@@ -79,12 +115,12 @@ def multi_environment_dict() -> dict[str, Any]:
     dict[str, Any]
         The toml environment file, parsed into a dict
     """
-    with open(Path(__file__).parent / "assets" / "multi_environment.toml") as f:
+    with open(multi_environment_path) as f:
         return loads(f.read())
 
 
 @pytest.fixture
-def multi_environment_dict2() -> dict[str, Any]:
+def multi_environment_dict2(multi_environment_path2) -> dict[str, Any]:
     """Return another multi environment toml file, parsed into a dict.
 
     Returns
@@ -92,5 +128,5 @@ def multi_environment_dict2() -> dict[str, Any]:
     dict[str, Any]
         The toml environment file, parsed into a dict
     """
-    with open(Path(__file__).parent / "assets" / "multi_environment2.toml") as f:
+    with open(multi_environment_path2) as f:
         return loads(f.read())

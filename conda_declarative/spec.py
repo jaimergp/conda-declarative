@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import string
+from abc import ABC, abstractmethod
 from copy import copy
 from dataclasses import fields
 from pathlib import Path
@@ -30,12 +32,58 @@ from pydantic import (
 )
 
 
-def as_dict(value: dict[str, str | dict[str, str]]) -> list[dict[str, str]]:
-    """Coerce a raw dependency to a dict.
+def handle_pypi_dependencies(
+    value: dict[str, str | dict[str, str]],
+) -> list[str | EditablePackage]:
+    """Preprocess a set of raw pypi dependencies.
 
-    Dependencies can either be strings, or dicts
-    which can be parsed to MatchSpec, or dicts which can be parsed
-    as EditablePackage.
+    Parameters
+    ----------
+    value : dict[str, str | dict[str, str]]
+        A mapping between package names and either a version specifier, or
+        a dict of that indicates it is a local editable package, e.g.
+
+            conda-declarative = { path  = ".", editable = true }
+
+    Returns
+    -------
+    list[str | EditablePackage]
+        A list of processed pypi dependencies
+    """
+    items = []
+    for name, item in value.items():
+        if isinstance(item, str):
+            if item == "*":
+                # Install any version
+                #
+                #   example = "*"  # noqa: ERA001
+                items.append(name)
+            elif item[0] in string.digits:
+                # Install a specific version
+                #
+                #   example = "12.0"  # noqa: ERA001
+                items.append(f"{name}=={item}")
+            else:
+                # Some version constraint specified
+                #
+                #   example = ">=2.28.0,<3"  # noqa: ERA001
+                items.append(f"{name}{item}")
+        elif isinstance(item, dict):
+            # This is an editable local package
+            items.append(EditablePackage(name=name, **item))
+        else:
+            raise ValueError
+
+    return items
+
+
+def handle_match_specs(
+    value: dict[str, str | dict[str, str]],
+) -> list[MatchSpec | EditablePackage]:
+    """Preprocess a set of raw conda dependencies.
+
+    Dependencies can either be strings, or dicts which can be parsed to MatchSpec, or
+    dicts which can be parsed as EditablePackage.
 
     Parameters
     ----------
@@ -44,8 +92,8 @@ def as_dict(value: dict[str, str | dict[str, str]]) -> list[dict[str, str]]:
 
     Returns
     -------
-    dict[str, str]
-        A dict containing match spec key/values
+    list[MatchSpec | EditablePackage]
+        A list of dependencies
     """
     items = []
     for name, item in value.items():
@@ -80,7 +128,7 @@ class TomlSpec(EnvironmentSpecBase):
             True if the file can be parsed (it exists and is a toml file), False
             otherwise
         """
-        if self.filename.exists() and self.filename.suffix == "toml":
+        if self.filename.exists() and self.filename.suffix == ".toml":
             try:
                 self._load_toml()
                 return True
@@ -108,10 +156,27 @@ class TomlSpec(EnvironmentSpecBase):
 
     @property
     def env(self) -> Environment:
-        """Generate an Environment from the provided TOML file."""
+        """Generate an Environment from the provided TOML file.
+
+        Returns
+        -------
+        Environment
+            An Environment instance populated from the TOML file
+        """
         if self._environment is None:
             self._load_toml()
         return self._environment
+
+    @property
+    def environment(self) -> Environment:
+        """Alias for `self.env`.
+
+        Returns
+        -------
+        Environment
+            An Environment instance populated from the TOML file
+        """
+        return self.env
 
 
 class Author(BaseModel):
@@ -172,7 +237,12 @@ class EditablePackage(BaseModel):
     editable: bool
 
 
-MatchSpecList = Annotated[list[MatchSpec | EditablePackage], BeforeValidator(as_dict)]
+MatchSpecList = Annotated[
+    list[MatchSpec | EditablePackage], BeforeValidator(handle_match_specs)
+]
+PyPIDependencies = Annotated[
+    list[str | EditablePackage], BeforeValidator(handle_pypi_dependencies)
+]
 
 
 class Platform(BaseModel):
@@ -183,11 +253,12 @@ class Platform(BaseModel):
     dependencies: MatchSpecList = []
 
 
-class TomlEnvironment(BaseModel):
+class TomlEnvironment(BaseModel, ABC):
     """A base class for (de)serialization of a TOML environment file.
 
-    This shouldn't be instantiated directly; instead use one of the child classes, or
-    TomlEnvironment.
+    This shouldn't/won't be instantiated directly. Instead, calling model_validate will
+    instantiate one of the child classes, depending on whichever the environment file
+    successfully validates.
     """
 
     model_config = ConfigDict(
@@ -217,6 +288,36 @@ class TomlEnvironment(BaseModel):
         # the parent.
         return super().model_validate(*args, **kwargs)
 
+    @abstractmethod
+    def get_requested_packages(self, *args, **kwargs) -> list[MatchSpec]:
+        """Get the requested conda packages.
+
+        For a single environment, this is just the dependencies requested.
+        For a multi-environment, an `environment` parameter will be used
+        to determine which conda dependencies are returned here.
+
+        Returns
+        -------
+        list[MatchSpec]
+            A list of MatchSpec requested by the user
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_external_packages(self, *args, **kwargs) -> list[MatchSpec]:
+        """Get the requested pypi packages.
+
+        For a single environment, this is just the dependencies requested.
+        For a multi-environment, an `environment` parameter will be used
+        to determine which conda dependencies are returned here.
+
+        Returns
+        -------
+        list[MatchSpec]
+            A list of MatchSpec requested by the user
+        """
+        raise NotImplementedError
+
 
 class TomlSingleEnvironment(TomlEnvironment):
     """A model which handles single environment files."""
@@ -229,7 +330,7 @@ class TomlSingleEnvironment(TomlEnvironment):
 
     dependencies: MatchSpecList = []
     platform: dict[str, Platform] = {}
-    pypi_dependencies: MatchSpecList = []
+    pypi_dependencies: PyPIDependencies = []
 
     @model_validator(mode="before")
     @classmethod
@@ -252,7 +353,7 @@ class TomlSingleEnvironment(TomlEnvironment):
             raise ValueError
         return data
 
-    def get_requested_packages(self) -> list[MatchSpec]:
+    def get_requested_packages(self, *args, **kwargs) -> list[MatchSpec]:  # noqa: ARG002
         """Get the requested packages for the environment.
 
         Returns
@@ -263,8 +364,10 @@ class TomlSingleEnvironment(TomlEnvironment):
         """
         return self.dependencies
 
-    def get_external_packages(self) -> dict[str, list[str]]:
+    def get_external_packages(self, *args, **kwargs) -> dict[str, list[str]]:  # noqa: ARG002
         """Get the external packages for the environment.
+
+        Editable packages are ignored.
 
         Returns
         -------
@@ -274,7 +377,18 @@ class TomlSingleEnvironment(TomlEnvironment):
 
             {'pip': [<some package names>, ...]}
         """
-        raise NotImplementedError
+        non_editable = []
+        for dep in self.pypi_dependencies:
+            if isinstance(dep, EditablePackage):
+                warn(
+                    "Editable packages are not supported PyPI dependencies. "
+                    f"Ignoring: {dep}",
+                    stacklevel=2,
+                )
+            else:
+                non_editable.append(dep)
+
+        return {"pip": non_editable}
 
 
 class Group(BaseModel):
@@ -291,7 +405,7 @@ class Group(BaseModel):
     dependencies: MatchSpecList = []
     description: str | None = None
     platform: dict[str, Platform] = {}
-    pypi_dependencies: MatchSpecList = []
+    pypi_dependencies: PyPIDependencies = []
     system_requirements: MatchSpecList = []
 
 

@@ -24,10 +24,11 @@ requires-python = ">=3.10"
 dependencies = [
   # "conda >=23.9.0",
   "boltons",
-  "tomli>=2.0.1;python_version<'3.11'",
-  "tomli-w",
+  "pydantic[email]>=2.11.7,<3",
   "textual>=3.3.0",
   "textual[syntax]",
+  "tomli-w",
+  "tomli>=2.0.1;python_version<'3.11'",
 ]
 dynamic = ["version"]
 
