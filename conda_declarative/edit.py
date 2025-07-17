@@ -7,6 +7,7 @@ import os
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 try:
     from tomllib import loads
@@ -15,25 +16,30 @@ except ImportError:
 
 from collections.abc import Iterable
 
+from conda import CondaMultiError
 from conda.models.match_spec import MatchSpec
 from conda.models.records import PrefixRecord
 from conda.plugins.virtual_packages.cuda import cached_cuda_version
+from rich.spinner import Spinner
 from rich.style import Style
 from rich.text import Text as RichText
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Center, Container, Horizontal, Right, Vertical
+from textual.containers import Center, Container, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
     DataTable,
     Footer,
     Label,
+    ProgressBar,
+    Static,
     TextArea,
 )
 
-from .apply import solve
+from . import app
+from .apply import apply, solve
 from .constants import CONDA_MANIFEST_FILE
 from .state import dict_to_env, update_state
 from .util import set_conda_console
@@ -76,26 +82,182 @@ class SortOrder(Enum):
     DESC = "descending"
 
 
+class SpinnerWidget(Static):
+    """Textual widget which displays a spinner.
+
+    See https://textual.textualize.io/blog/2022/11/24/spinners-and-progress-bars-in-textual/
+    for more inspiration.
+    """
+
+    DEFAULT_CLASSES = "hidden"
+    DEFAULT_CSS = """
+    SpinnerWidget {
+        visibility: visible;
+    }
+    SpinnerWidget.hidden {
+        visibility: hidden;
+    }
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__("", **kwargs)
+        self._spinner = Spinner("dots12")
+
+    def on_mount(self) -> None:
+        """Set the update interval of the spinner."""
+        self.update_render = self.set_interval(1 / 60, self.update_spinner)
+
+    def update_spinner(self) -> None:
+        """Update the spinner status."""
+        self.update(self._spinner)
+
+    def set_text(self, text: str) -> None:
+        """Set the text next to the spinner.
+
+        Parameters
+        ----------
+        text : str
+            Text to display
+        """
+        self._spinner.update(text=text)
+
+    def hide(self):
+        """Hide the spinner."""
+        self.add_class("hidden")
+
+    def show(self):
+        """Show the spinner."""
+        self.remove_class("hidden")
+
+
+class LabeledProgressBar(ProgressBar):
+    """A progress bar with a label."""
+
+    DEFAULT_CSS = """
+    Horizontal {
+        align-horizontal: right;
+        height: auto;
+        width: auto;
+        visibility: visible;
+        max-width: 120;
+        padding: 0 2;
+    }
+    """
+
+    def __init__(self, text: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.text = text
+
+    def compose(self):
+        """Display a progress bar with a label next to it."""
+        with Horizontal():
+            yield Label(self.text)
+            yield from super().compose()
+
+
+class ProgressBars(Vertical):
+    """An area that displays progress bars, but only if there are bars to show.
+
+    See https://textual.textualize.io/guide/app/#mounting for the reference
+    used here to dynamically add widgets.
+    """
+
+    DEFAULT_CSS = """
+    ProgressBars {
+        layer: top;
+        width: 1fr;
+        height: auto;
+        dock: bottom;
+        align: right bottom;
+        visibility: hidden;
+        padding: 0 2;
+        overflow-y: scroll;
+        margin-bottom: 1;
+    }
+    #bar-container {
+        align: right bottom;
+        width: auto;
+        height: auto;
+        padding: 2;
+        outline: solid $primary;
+        visibility: visible;
+        background: $surface;
+    }
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.bars: dict[UUID, LabeledProgressBar] = {}
+        self.container = Vertical(id="bar-container")
+
+    def add_bar(self, uuid: UUID, description: str):
+        """Add a bar to the progress bars widget.
+
+        Parameters
+        ----------
+        uuid : UUID
+            Unique identifier for the bar
+        description : str
+            Text to show next to the bar
+        """
+        if not self.bars:
+            self.mount(self.container)
+        self.bars[uuid] = LabeledProgressBar(text=description, total=1.0)
+        self.container.mount(self.bars[uuid])
+
+    def remove_bar(self, uuid: UUID):
+        """Remove a bar from the progress bars widget.
+
+        Parameters
+        ----------
+        uuid : UUID
+            UUID of the bar to remove
+        """
+        self.bars[uuid].remove()
+        del self.bars[uuid]
+        if not self.bars:
+            self.container.remove()
+
+    def update_bar(self, uuid: UUID, fraction: float):
+        """Update a bar in the progress bars widget.
+
+        Parameters
+        ----------
+        uuid : UUID
+            UUID of the bar to update
+        fraction : float
+            Value the bar should be updated to. Should be in the range [0, 1]
+        """
+        self.bars[uuid].update(progress=fraction)
+
+
 class EditApp(App):
     """Main application which runs upon `conda edit`."""
 
     BINDINGS = [
         Binding("ctrl+q", "quit", "Quit", priority=True),
         Binding("ctrl+s", "save", "Save", priority=True),
+        Binding("ctrl+e", "apply", "Apply", priority=True),
     ]
-
     DEFAULT_CSS = """
+    EditApp {
+        layers: base top;
+        layer: base;
+    }
     #output {
         height: 1fr;
     }
     #progress-area {
-        height: 1;
+        height: 2;
     }
     #editor-label-area {
         height: 1;
     }
     #editor {
         height: 1fr;
+    }
+    #spinner {
+        width: 4;
     }
     """
 
@@ -125,7 +287,9 @@ class EditApp(App):
         self.initial_text = text
         self.editor = TextArea.code_editor(text=text, language="toml", id="editor")
         self.editor_label = Label()
-        self.progress_label = Label()
+        self.progress_bar_area = ProgressBars()
+        self.spinner = SpinnerWidget(id="spinner")
+        self.progress_label = Label(id="progress-label")
 
         self.table = DataTable(id="output", cursor_type="row")
         self.table_sort_key = "name"
@@ -137,6 +301,40 @@ class EditApp(App):
         self.current_solution: Iterable[PrefixRecord] | None = None
 
         self.set_status("done")
+
+    def add_bar(self, uuid: UUID, description: str):
+        """Add a bar to the progress bars widget.
+
+        Parameters
+        ----------
+        uuid : UUID
+            Unique identifier for the bar
+        description : str
+            Text to show next to the bar
+        """
+        self.progress_bar_area.add_bar(uuid, description)
+
+    def remove_bar(self, uuid: UUID):
+        """Remove a bar from the progress bars widget.
+
+        Parameters
+        ----------
+        uuid : UUID
+            UUID of the bar to remove
+        """
+        self.progress_bar_area.remove_bar(uuid)
+
+    def update_bar(self, uuid: UUID, fraction: float):
+        """Update a bar in the progress bars widget.
+
+        Parameters
+        ----------
+        uuid : UUID
+            UUID of the bar to update
+        fraction : float
+            Value the bar should be updated to. Should be in the range [0, 1]
+        """
+        self.progress_bar_area.update_bar(uuid, fraction)
 
     def set_status(self, text: str) -> None:
         """Set the progress label to the given text.
@@ -153,6 +351,24 @@ class EditApp(App):
             label += "..."
 
         self.progress_label.update(f"{label:<30}")
+
+    def spinner_hide(self):
+        """Hide the spinner widget."""
+        self.spinner.hide()
+
+    def spinner_show(self):
+        """Show the spinner widget."""
+        self.spinner.show()
+
+    def spinner_set_text(self, text: str):
+        """Set the text on the spinner widget.
+
+        Parameters
+        ----------
+        text : str
+            Text to display
+        """
+        self.spinner.set_text(text)
 
     @on(DataTable.HeaderSelected)
     async def handle_header_selected(self, event: DataTable.HeaderSelected) -> None:
@@ -380,14 +596,15 @@ class EditApp(App):
                 yield self.editor
             with Vertical():
                 yield self.table
-                with Horizontal(id="progress-area"):
+                with Vertical(id="progress-area"):
                     yield Label(
                         Text("++>  Requested package", style=REQUESTED_STYLE)
                         + Text("       +  Added package", style=ADDED_STYLE)
                         + Text("       -  Removed package", style=REMOVED_STYLE)
                         + Text("          Unchanged package", style="default")
                     )
-                    with Right():
+                    with Horizontal(id="status-bar"):
+                        yield self.spinner
                         yield self.progress_label
         yield Footer()
 
@@ -396,6 +613,7 @@ class EditApp(App):
 
         Each column name for the table includes extra spaces for sort indicators.
         """
+        self.mount(self.progress_bar_area)
         self.editor_label.update(f"Editing {self.filename}")
 
         for label in ("status", "name", "version", "build", "build_number", "channel"):
@@ -450,6 +668,35 @@ class EditApp(App):
 
         self.title = f"Editing {self.filename}"
         self.notify(f"Saved: {self.filename}")
+
+    async def action_apply(self) -> None:
+        """Run the save action, then apply the changes to the environment async."""
+        self.action_save()
+        self.run_worker(self.run_apply(), exclusive=True)
+
+    async def run_apply(self):
+        """Apply the current env file to the target environment."""
+        try:
+            with set_conda_console():
+                await asyncio.to_thread(
+                    apply,
+                    prefix=self.prefix,
+                    quiet=True,
+                    dry_run=False,
+                    lock_only=False,
+                )
+        except CondaMultiError as e:
+            self.notify(
+                f"Exception while applying the environment: {repr(e)}.",
+                severity="error",
+            )
+        except Exception as e:
+            self.notify(
+                f"Exception while applying the environment: {e}. Type: {type(e)}",
+                severity="error",
+            )
+
+        self.set_status("done")
 
 
 class QuitModal(ModalScreen):
@@ -506,7 +753,10 @@ class QuitModal(ModalScreen):
         self.dismiss(event.button.id == "yes")
 
 
-def run_editor(prefix: PathType, subdirs: tuple[str, str]) -> None:
+def run_editor(
+    prefix: PathType,
+    subdirs: tuple[str, str],
+) -> None:
     """Launch the textual editor.
 
     Parameters
@@ -517,9 +767,8 @@ def run_editor(prefix: PathType, subdirs: tuple[str, str]) -> None:
     subdirs : tuple[str, str]
         Subdirectories known by conda; see docs for `context.subdirs`
     """
-    app = EditApp(
-        Path(prefix, CONDA_MANIFEST_FILE),
-        Path(prefix),
-        subdirs,
-    )
-    app.run()
+    if app.app is None:
+        app.app = EditApp(Path(prefix, CONDA_MANIFEST_FILE), Path(prefix), subdirs)
+        app.app.run()
+    else:
+        raise RuntimeError("App is already running.")

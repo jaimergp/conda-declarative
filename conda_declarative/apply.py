@@ -14,9 +14,14 @@ from conda.base.context import context
 from conda.cli.install import handle_txn
 from conda.core.link import PrefixSetup, UnlinkLinkTransaction
 from conda.core.solve import diff_for_unlink_link_precs
+from conda.exceptions import (
+    DryRunExit,
+)
 from conda.models.prefix_graph import PrefixGraph
 
 from .constants import CONDA_HISTORY_D
+from .exceptions import LockOnlyExit
+from .state import from_env_file
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -110,7 +115,8 @@ def link(
     records : Iterable[PackageRecord]
         Packages for which the `UnlinkLinkTransaction` is being applied to
     args : argparse.Namespace
-        Command line arguments passed in
+        Command line arguments to pass to `handle_txn`. Currently, only
+        `args.package_names` is used
 
     Returns
     -------
@@ -131,5 +137,72 @@ def link(
             neutered_specs=(),
         )
     )
-    handle_txn(txn, prefix, args, False, True)
+
+    handle_txn(
+        unlink_link_transaction=txn,
+        prefix=prefix,
+        args=args,
+        newenv=False,
+        remove_op=False,  # Must be False, unless `args.package_names` is provided
+    )
     return txn
+
+
+def apply(
+    prefix: str | None = None,
+    quiet: bool = False,
+    dry_run: bool = False,
+    lock_only: bool = False,
+    args: argparse.Namespace | None = None,
+) -> None:
+    """Read the env file, solve it, and then link the resulting transaction.
+
+    Parameters
+    ----------
+    prefix : str | None
+        Prefix of the environment to modify
+    quiet : bool
+        If True, suppress status messages
+    dry_run : bool
+        If True, only solve the environment, don't change the environment
+    lock_only : bool
+        If True, only lock the records in the target prefix - don't change the
+        environment
+    args : argparse.Namespace | None
+        Any additional command line arguments to be passed to `link`. Currently,
+        only `args.package_names` is used
+    """
+    if prefix is None:
+        prefix = context.target_prefix
+
+    env = from_env_file(str(prefix))
+
+    if env is not None:
+        requested_packages = env.requested_packages
+        if env.config is not None:
+            channels = env.config.channels
+    else:
+        channels = []
+        requested_packages = []
+
+    records = solve(
+        prefix=context.target_prefix,
+        channels=channels,
+        subdirs=context.subdirs,
+        specs=requested_packages,
+    )
+
+    if args is None:
+        args = argparse.Namespace()
+
+    if not quiet:
+        print(*records, sep="\n")  # This should be a diff'd report
+
+    if dry_run:
+        raise DryRunExit()
+
+    if lock_only:
+        lock(prefix=context.target_prefix, records=records)
+        raise LockOnlyExit()
+
+    link(prefix=context.target_prefix, records=records, args=args)
