@@ -29,7 +29,7 @@ def python_prefix(tmp_env):
     ):
         mock_target_prefix.return_value = str(prefix)
 
-        with open(state.get_env_path(prefix)) as f:
+        with open(state.get_manifest_path(prefix)) as f:
             requested = loads(f.read())["requested_packages"]
         assert requested == ["python"]
         yield prefix
@@ -50,7 +50,7 @@ def python_flask_prefix(tmp_env):
     ):
         mock_target_prefix.return_value = str(prefix)
 
-        with open(state.get_env_path(prefix)) as f:
+        with open(state.get_manifest_path(prefix)) as f:
             requested = loads(f.read())["requested_packages"]
 
         assert set(requested) == set(["python", "flask"])

@@ -38,7 +38,7 @@ def test_update_state(
     file also works.
     """
     if remove_initial_declarative_env_file:
-        state.get_env_path(python_flask_prefix).unlink()
+        state.get_manifest_path(python_flask_prefix).unlink()
 
     with mock.patch("conda_declarative.state.dump") as mock_dump:
         state.update_state(

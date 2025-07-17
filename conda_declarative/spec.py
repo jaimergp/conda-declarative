@@ -25,6 +25,7 @@ from pydantic import (
     BeforeValidator,
     ConfigDict,
     EmailStr,
+    PlainSerializer,
     ValidationError,
     ValidationInfo,
     field_validator,
@@ -78,7 +79,7 @@ def handle_pypi_dependencies(
 
 
 def handle_match_specs(
-    value: dict[str, str | dict[str, str]],
+    value: dict[str, MatchSpec | str | dict[str, str]],
 ) -> list[MatchSpec | EditablePackage]:
     """Preprocess a set of raw conda dependencies.
 
@@ -87,7 +88,7 @@ def handle_match_specs(
 
     Parameters
     ----------
-    value : Any
+    value : dict[str, MatchSpec | str | dict[str, str]]
         A string match spec, or a dict containing match spec key/values
 
     Returns
@@ -97,7 +98,9 @@ def handle_match_specs(
     """
     items = []
     for name, item in value.items():
-        if isinstance(item, str):
+        if isinstance(item, MatchSpec):
+            items.append(item)
+        elif isinstance(item, str):
             items.append(MatchSpec(name=name, version=item))
         elif isinstance(item, dict):
             # This is a dict representation of a MatchSpec
@@ -113,14 +116,32 @@ def handle_match_specs(
 
 
 class TomlSpec(EnvironmentSpecBase):
-    """Implementation of conda's EnvironmentSpec which can handle toml files."""
+    """Implementation of conda's EnvironmentSpec which can handle toml files.
 
-    def __init__(self, filename: str):
-        self.filename = Path(filename)
+    Acts as a converter to translate to and from TOML files, dicts, Environments, and
+    TomlSingleEnvironment objects.
+
+
+    ┌───────────┐    ┌────────────┐      ┌───────────────────────┐     ┌─────────────┐
+    │ TOML file │◄───│ dictionary │◄─────┤ TomlSingleEnvironment │◄────┤ Environment │
+    │           ├───►│            ├─────►│    pydantic model     │────►│  instance   │
+    └───────────┘    └────────────┘      └───────────────────────┘     └─────────────┘
+
+    """
+
+    def __init__(self, obj: str | Path | TomlSingleEnvironment | Environment | dict):
+        self._obj: str | Path | TomlSingleEnvironment | Environment | dict = obj
+
+        self._filename: Path | None = None
+        self._model: TomlSingleEnvironment | None = None
         self._environment: Environment | None = None
 
     def can_handle(self) -> bool:
-        """Return whether the file passed to this class can be parsed.
+        """Return whether the object passed to this class can be parsed.
+
+        - If a file path was passed, try to open it and parse it.
+        - If a dict was passed, try to parse it
+        - If a
 
         Returns
         -------
@@ -128,21 +149,43 @@ class TomlSpec(EnvironmentSpecBase):
             True if the file can be parsed (it exists and is a toml file), False
             otherwise
         """
-        if self.filename.exists() and self.filename.suffix == ".toml":
-            try:
-                self._load_toml()
-                return True
-            except Exception:
-                pass
+        try:
+            self._load()
+            return True
+        except Exception:
+            return False
 
-        return False
+    def _load(self) -> None:
+        if isinstance(self.obj, str | Path):
+            self._filename = Path(self.obj)
 
-    def _load_toml(self) -> None:
-        """Load a TOML file and use it to construct an Environment."""
-        with open(self.filename) as f:
-            model = TomlSingleEnvironment.model_validate(loads(f.read()))
+            if self._filename.exists() and self._filename.suffix == ".toml":
+                with open(self._filename) as f:
+                    text = f.read()
 
-        self._environment = Environment(
+                self._model = TomlSingleEnvironment.model_validate(loads(text))
+                self._environment = self._model_to_environment(self._model)
+            else:
+                raise ValueError(f"No file exists at {self._filename}")
+
+        elif isinstance(self.obj, TomlSingleEnvironment):
+            self._model = self.obj
+            self._environment = self._model_to_environment(self._model)
+
+        elif isinstance(self.obj, dict):
+            self._model = TomlSingleEnvironment.model_validate(self.obj)
+            self._environment = self._model_to_environment(self._model)
+
+        elif isinstance(self.obj, Environment):
+            self._environment = self.obj
+            self._model = self._environment_to_model(self._environment)
+
+        else:
+            raise ValueError(f"Invalid parameter for TomlSpec: {self._obj}")
+
+    @staticmethod
+    def _model_to_environment(model: TomlSingleEnvironment) -> Environment:
+        return Environment(
             prefix=context.target_prefix,
             platform=context.subdir,
             config=combine(
@@ -154,17 +197,68 @@ class TomlSpec(EnvironmentSpecBase):
             variables=model.config.variables,
         )
 
-    @property
-    def env(self) -> Environment:
-        """Generate an Environment from the provided TOML file.
+    @staticmethod
+    def _environment_to_model(env: Environment) -> TomlSingleEnvironment:
+        return TomlSingleEnvironment.model_validate(
+            {
+                "about": {
+                    "name": env.name if env.name else "",
+                    "revision": "1",
+                    "description": "",
+                },
+                "config": {
+                    "channels": env.config.channels,
+                    "platforms": {env.platform: {}},
+                    "variables": env.variables,
+                },
+                "platform": env.platform,
+                "system_requirements": [],
+                "version": 1,
+                "dependencies": env.requested_packages,
+                "pypi_dependencies": env.external_packages.get("pip", []),
+            }
+        )
+
+    @classmethod
+    def from_dict(cls, obj: dict[str, Any]) -> TomlSpec:
+        """Ingest a dict (e.g. read from a TOML spec file) to build a TomlSpec.
+
+        Parameters
+        ----------
+        obj : dict[str, Any]
+            A dict which can be validated with TomlSingleEnvironment
 
         Returns
         -------
         Environment
-            An Environment instance populated from the TOML file
+            Environment object which can be used to update a conda environment
         """
-        if self._environment is None:
-            self._load_toml()
+        raise NotImplementedError
+
+    @property
+    def model(self) -> TomlSingleEnvironment:
+        """Generate a pydantic model from the TomlSpec.
+
+        Returns
+        -------
+        TomlSingleEnvironment
+            Model of the environment
+        """
+        if self._model is None or self._environment is None:
+            self._load()
+        return self._model
+
+    @property
+    def env(self) -> Environment:
+        """Generate an Environment from the TomlSpec.
+
+        Returns
+        -------
+        Environment
+            An Environment instance populated by the TomlSpec
+        """
+        if self._model is None or self._environment is None:
+            self._load()
         return self._environment
 
     @property
@@ -242,6 +336,7 @@ MatchSpecList = Annotated[
 ]
 PyPIDependencies = Annotated[
     list[str | EditablePackage], BeforeValidator(handle_pypi_dependencies)
+    # list[PackageRecord | str | EditablePackage], BeforeValidator(handle_pypi_dependencies)
 ]
 
 
@@ -269,7 +364,7 @@ class TomlEnvironment(BaseModel, ABC):
     )
 
     about: About
-    config: Config
+    config: Config | None = Config()
     system_requirements: MatchSpecList = []
     version: int = 1
 
@@ -355,6 +450,13 @@ class TomlSingleEnvironment(TomlEnvironment):
 
     def get_requested_packages(self, *args, **kwargs) -> list[MatchSpec]:  # noqa: ARG002
         """Get the requested packages for the environment.
+
+        Parameters
+        ----------
+        *args
+            Unused
+        **kwargs
+            Unused
 
         Returns
         -------

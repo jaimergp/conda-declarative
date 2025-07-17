@@ -41,7 +41,8 @@ from textual.widgets import (
 from . import app
 from .apply import apply, solve
 from .constants import CONDA_MANIFEST_FILE
-from .state import dict_to_env, update_state
+from .spec import TomlSpec
+from .state import update_state
 from .util import set_conda_console
 
 if TYPE_CHECKING:
@@ -448,8 +449,7 @@ class EditApp(App):
             await asyncio.sleep(debounce)
         try:
             self.set_status("reading toml")
-            manifest = await asyncio.to_thread(loads, self.editor.text)
-            environment = dict_to_env(manifest)
+            environment = TomlSpec.dict_to_environment(loads(self.editor.text))
         except Exception as e:
             self.notify(f"The current file is invalid TOML: {e}", severity="error")
             self.set_status("done")

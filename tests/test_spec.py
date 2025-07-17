@@ -132,7 +132,7 @@ def test_toml_spec(single_environment_path):
 
     assert toml_spec.env.variables == {"SOME": "VARIABLE"}
     assert toml_spec.env.config.channels == ["conda-forge"]
-    assert toml_spec.env.external_packages == {"pip": ["example"]}
+    assert toml_spec.env.external_packages == {"pip": ["flask", "numpy>=2"]}
     pkgs = [(pkg.name, str(pkg.version)) for pkg in toml_spec.env.requested_packages]
 
     assert pkgs == [("python", ">=3.10")]

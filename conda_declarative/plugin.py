@@ -10,7 +10,7 @@ from conda.plugins.types import (
 
 from . import cli, spec
 from .renderers import TuiReporterRenderer
-from .state import get_env_path, update_state
+from .state import get_manifest_path, update_state
 
 
 @plugins.hookimpl
@@ -49,8 +49,8 @@ class UpdateState(Action):
 
     def execute(self):
         """Update the declarative env file with the current environment."""
-        if get_env_path(self.target_prefix).is_file():
-            with open(get_env_path(self.target_prefix)) as f:
+        if get_manifest_path(self.target_prefix).is_file():
+            with open(get_manifest_path(self.target_prefix)) as f:
                 self.original_env = f.read()
 
         update_state(
@@ -67,9 +67,9 @@ class UpdateState(Action):
         it was previously.
         """
         if self.original_env is None:
-            get_env_path(self.target_prefix).unlink(missing_ok=True)
+            get_manifest_path(self.target_prefix).unlink(missing_ok=True)
         else:
-            with open(get_env_path(self.target_prefix), "w") as f:
+            with open(get_manifest_path(self.target_prefix), "w") as f:
                 f.write(self.original_env)
 
     def cleanup(self):

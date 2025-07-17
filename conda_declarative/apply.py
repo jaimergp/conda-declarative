@@ -175,21 +175,12 @@ def apply(
     if prefix is None:
         prefix = context.target_prefix
 
-    env = from_env_file(str(prefix))
-
-    if env is not None:
-        requested_packages = env.requested_packages
-        if env.config is not None:
-            channels = env.config.channels
-    else:
-        channels = []
-        requested_packages = []
-
+    model = from_env_file(str(prefix))
     records = solve(
         prefix=context.target_prefix,
-        channels=channels,
+        channels=model.config.channels,
         subdirs=context.subdirs,
-        specs=requested_packages,
+        specs=model.dependencies,
     )
 
     if args is None:
