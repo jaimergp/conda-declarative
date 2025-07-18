@@ -33,18 +33,21 @@ from pydantic import (
 )
 
 
-def handle_pypi_dependencies(
-    value: dict[str, str | dict[str, str]],
+def validate_pypi_dependencies(
+    value: list[str | EditablePackage] | dict[str, str | dict[str, str]],
 ) -> list[str | EditablePackage]:
     """Preprocess a set of raw pypi dependencies.
 
     Parameters
     ----------
-    value : dict[str, str | dict[str, str]]
+    value : list[str | EditablePackage] | dict[str, str | dict[str, str]]
         A mapping between package names and either a version specifier, or
         a dict of that indicates it is a local editable package, e.g.
 
             conda-declarative = { path  = ".", editable = true }
+
+        Can also be a list of PyPI dependencies, in which case the list is
+        just passed through.
 
     Returns
     -------
@@ -52,34 +55,52 @@ def handle_pypi_dependencies(
         A list of processed pypi dependencies
     """
     items = []
-    for name, item in value.items():
-        if isinstance(item, str):
-            if item == "*":
-                # Install any version
-                #
-                #   example = "*"  # noqa: ERA001
-                items.append(name)
-            elif item[0] in string.digits:
-                # Install a specific version
-                #
-                #   example = "12.0"  # noqa: ERA001
-                items.append(f"{name}=={item}")
+    if isinstance(value, list):
+        items = value
+
+    else:
+        for name, item in value.items():
+            if isinstance(item, str):
+                if item == "*":
+                    # Install any version
+                    #
+                    #   example = "*"  # noqa: ERA001
+                    items.append(name)
+                elif item[0] in string.digits:
+                    # Install a specific version
+                    #
+                    #   example = "12.0"  # noqa: ERA001
+                    items.append(f"{name}=={item}")
+                else:
+                    # Some version constraint is specified
+                    #
+                    #   example = ">=2.28.0,<3"  # noqa: ERA001
+                    items.append(f"{name}{item}")
+            elif isinstance(item, dict):
+                # This is an editable local package
+                items.append(EditablePackage(name=name, **item))
             else:
-                # Some version constraint is specified
-                #
-                #   example = ">=2.28.0,<3"  # noqa: ERA001
-                items.append(f"{name}{item}")
-        elif isinstance(item, dict):
-            # This is an editable local package
-            items.append(EditablePackage(name=name, **item))
-        else:
-            raise ValueError
+                raise ValueError
 
     return items
 
 
-def handle_match_specs(
-    value: dict[str, MatchSpec | str | dict[str, str]],
+def serialize_pypi_dependencies(
+    specs: list[str | EditablePackage]
+) -> dict[str, str | dict[str, str]]:
+    items = {}
+    for spec in specs:
+        if isinstance(spec, str):
+            items[spec] = spec
+        elif isinstance(spec, EditablePackage):
+            items[spec.name] = {'path': spec.path, 'editable': spec.editable }
+        else:
+            raise ValueError
+    return items
+
+
+def validate_match_spec(
+    value: list[MatchSpec] | dict[str, MatchSpec | str | dict[str, str]],
 ) -> list[MatchSpec | EditablePackage]:
     """Preprocess a set of raw conda dependencies.
 
@@ -88,8 +109,9 @@ def handle_match_specs(
 
     Parameters
     ----------
-    value : dict[str, MatchSpec | str | dict[str, str]]
-        A string match spec, or a dict containing match spec key/values
+    value : list[MatchSpec | EditablePackage] | dict[str, MatchSpec | str | dict[str, str]]
+        A list of dependencies, or a dict which maps package names to string, MatchSpec, or
+        editable package objects
 
     Returns
     -------
@@ -97,23 +119,48 @@ def handle_match_specs(
         A list of dependencies
     """
     items = []
-    for name, item in value.items():
-        if isinstance(item, MatchSpec):
-            items.append(item)
-        elif isinstance(item, str):
-            items.append(MatchSpec(name=name, version=item))
-        elif isinstance(item, dict):
-            # This is a dict representation of a MatchSpec
-            # or an editable file
-            try:
-                items.append(EditablePackage(name=name, **item))
-            except ValidationError:
-                items.append(MatchSpec(name=name, **item))
-        else:
-            raise ValueError
-
+    if isinstance(value, list):
+        items = value
+    else:
+        for name, item in value.items():
+            if isinstance(item, MatchSpec):
+                items.append(item)
+            elif isinstance(item, str):
+                items.append(MatchSpec(name=name, version=item))
+            elif isinstance(item, dict):
+                # This is a dict representation of a MatchSpec
+                # or an editable file
+                try:
+                    items.append(EditablePackage(name=name, **item))
+                except ValidationError:
+                    items.append(MatchSpec(name=name, **item))
+            else:
+                raise ValueError
     return items
 
+
+def serialize_match_spec(specs: list[MatchSpec | EditablePackage]) -> dict[str, str]:
+    """Serialize a list of MatchSpec to a dict.
+
+    Parameters
+    ----------
+    specs : list[MatchSpec | EditablePackage]
+        List of specs to serialize
+
+    Returns
+    -------
+    dict[str, str]
+        Dict representation of the input
+    """
+    items = {}
+    for spec in specs:
+        if isinstance(spec, MatchSpec):
+            items[str(spec.name)] = "*" if spec.version is None else str(spec.version)
+        elif isinstance(spec, EditablePackage):
+            items[spec.name] = {'path': spec.path, 'editable': spec.editable }
+        else:
+            raise ValueError
+    return items
 
 class TomlSpec(EnvironmentSpecBase):
     """Implementation of conda's EnvironmentSpec which can handle toml files.
@@ -156,8 +203,8 @@ class TomlSpec(EnvironmentSpecBase):
             return False
 
     def _load(self) -> None:
-        if isinstance(self.obj, str | Path):
-            self._filename = Path(self.obj)
+        if isinstance(self._obj, str | Path):
+            self._filename = Path(self._obj)
 
             if self._filename.exists() and self._filename.suffix == ".toml":
                 with open(self._filename) as f:
@@ -168,16 +215,16 @@ class TomlSpec(EnvironmentSpecBase):
             else:
                 raise ValueError(f"No file exists at {self._filename}")
 
-        elif isinstance(self.obj, TomlSingleEnvironment):
-            self._model = self.obj
+        elif isinstance(self._obj, TomlSingleEnvironment):
+            self._model = self._obj
             self._environment = self._model_to_environment(self._model)
 
-        elif isinstance(self.obj, dict):
-            self._model = TomlSingleEnvironment.model_validate(self.obj)
+        elif isinstance(self._obj, dict):
+            self._model = TomlSingleEnvironment.model_validate(self._obj)
             self._environment = self._model_to_environment(self._model)
 
-        elif isinstance(self.obj, Environment):
-            self._environment = self.obj
+        elif isinstance(self._obj, Environment):
+            self._environment = self._obj
             self._model = self._environment_to_model(self._environment)
 
         else:
@@ -330,15 +377,18 @@ class EditablePackage(BaseModel):
     path: str
     editable: bool
 
-
 MatchSpecList = Annotated[
-    list[MatchSpec | EditablePackage], BeforeValidator(handle_match_specs)
-]
-PyPIDependencies = Annotated[
-    list[str | EditablePackage], BeforeValidator(handle_pypi_dependencies)
-    # list[PackageRecord | str | EditablePackage], BeforeValidator(handle_pypi_dependencies)
+    list[MatchSpec | EditablePackage],
+    BeforeValidator(validate_match_spec),
+    PlainSerializer(serialize_match_spec),
 ]
 
+PyPIDependencies = Annotated[
+    # list[PackageRecord | str | EditablePackage]
+    list[str | EditablePackage],
+    BeforeValidator(validate_pypi_dependencies),
+    PlainSerializer(serialize_pypi_dependencies),
+]
 
 class Platform(BaseModel):
     """A model which stores a list of dependencies for a platform."""
