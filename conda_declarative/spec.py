@@ -86,14 +86,28 @@ def validate_pypi_dependencies(
 
 
 def serialize_pypi_dependencies(
-    specs: list[str | EditablePackage]
+    specs: list[str | EditablePackage],
 ) -> dict[str, str | dict[str, str]]:
+    """Serialize a list of pypi dependencies into a dict.
+
+    Parameters
+    ----------
+    specs : list[str | EditablePackage]
+        Dependencies to be serialized. Each item must be a pip-compatible string,
+        ("scipy", "numpy>2"),
+
+    Returns
+    -------
+    dict[str, str | dict[str, str]]
+
+
+    """
     items = {}
     for spec in specs:
         if isinstance(spec, str):
             items[spec] = spec
         elif isinstance(spec, EditablePackage):
-            items[spec.name] = {'path': spec.path, 'editable': spec.editable }
+            items[spec.name] = {"path": spec.path, "editable": spec.editable}
         else:
             raise ValueError
     return items
@@ -157,23 +171,55 @@ def serialize_match_spec(specs: list[MatchSpec | EditablePackage]) -> dict[str, 
         if isinstance(spec, MatchSpec):
             items[str(spec.name)] = "*" if spec.version is None else str(spec.version)
         elif isinstance(spec, EditablePackage):
-            items[spec.name] = {'path': spec.path, 'editable': spec.editable }
+            items[spec.name] = {"path": spec.path, "editable": spec.editable}
         else:
             raise ValueError
     return items
 
+
 class TomlSpec(EnvironmentSpecBase):
     """Implementation of conda's EnvironmentSpec which can handle toml files.
 
-    Acts as a converter to translate to and from TOML files, dicts, Environments, and
-    TomlSingleEnvironment objects.
+    Acts as a converter to translate TomlSingleEnvironment instances to and from
+    conda.models.environment.Environment objects. This class holds the filename of
+    a TOML spec file (if a filename is provided upon instantiation), a
+    TomlSingleEnvironment model instance, and an Environment instance. Since the
+    TomlSingleEnvironment and Environment classes don't hold exactly the same
+    information, the 95% use case is kept in mind when instantiating one object
+    from the other.
 
+                ┌───────────────────────┐     ┌────────────┐     ┌─────────────┐
+                │ TomlSingleEnvironment │◄────┤  TomlSpec  │◄────┤ Environment │
+                │    pydantic model     │────►│  instance  ├────►│             │
+                └────────────┬──────────┘     └────────────┘     └─────────────┘
+                         ▲   │                       ▲
+                         │   ▼                       │
+    ┌───────────┐    ┌───┴────────┐                  │
+    │ TOML file │◄───│ dictionary │             ┌────┴────┐
+    │           ├───►│            │             │ context │
+    └───────────┘    └────────────┘             └─────────┘
 
-    ┌───────────┐    ┌────────────┐      ┌───────────────────────┐     ┌─────────────┐
-    │ TOML file │◄───│ dictionary │◄─────┤ TomlSingleEnvironment │◄────┤ Environment │
-    │           ├───►│            ├─────►│    pydantic model     │────►│  instance   │
-    └───────────┘    └────────────┘      └───────────────────────┘     └─────────────┘
+    This class can instantiate using several different object types to facilitate
+    translating between TOML files/TomlSingleEnvironment models/Environment objects:
 
+    If the object passed to __init__ is a...
+
+        - A str or Path, it is treated as a path to a TOML environment spec on disk.
+          A new TomlSingleEnvironment model will be created as `self._model`, and an
+          Environment object as `self._environment`. Fields of `self._environment` are
+          instantiated from the context before being overwritten by any corresponding
+          fields in `self._model`.
+        - A dict, it is treated as a serialized TomlSingleEnvironment. A new model
+          instance will be created from this dict. Fields of `self._environment` are
+          instantiated from the context before being overwritten by any corresponding
+          fields in `self._model`.
+        - A TomlSingleEnvironment will just be stored as `self._model`. Fields of
+          `self._environment` are instantiated from the context before being
+          overwritten by any corresponding fields in `self._model`.
+        - An Environment, which will be used to generate a TomlSingleEnvironment. A
+          number of which appear in TomlSingleEnvironment but not Environment will be
+          uninitialized, including `platforms`, `system_requirements`, and
+          `pypi_dependencies`; see `TomlSpec._environment_to_model` for more info.
     """
 
     def __init__(self, obj: str | Path | TomlSingleEnvironment | Environment | dict):
@@ -185,10 +231,6 @@ class TomlSpec(EnvironmentSpecBase):
 
     def can_handle(self) -> bool:
         """Return whether the object passed to this class can be parsed.
-
-        - If a file path was passed, try to open it and parse it.
-        - If a dict was passed, try to parse it
-        - If a
 
         Returns
         -------
@@ -203,6 +245,22 @@ class TomlSpec(EnvironmentSpecBase):
             return False
 
     def _load(self) -> None:
+        """Attempt to load the object which was passed to `TomlSpec.__init__`.
+
+        If `self._obj` is a...
+
+        - str or Path, it is treated as the path to a TOML environment spec file.
+          A model will be created and Environment generated from it, together with
+          the context
+        - TomlSingleEnvironment, the model is just stored; a model will be created
+          and Environment generated from it, together with the context.
+          `self._filename` will be unpopulated.
+        - dict, it is treated as a serialized TomlSingleEnvironment; a new model
+          is created and Environment generated from it, together with the context.
+          `self._filename` will be unpopulated.
+        - Environment, a new model is created from it. `self._filename` will be
+          unpopulated.
+        """
         if isinstance(self._obj, str | Path):
             self._filename = Path(self._obj)
 
@@ -232,6 +290,21 @@ class TomlSpec(EnvironmentSpecBase):
 
     @staticmethod
     def _model_to_environment(model: TomlSingleEnvironment) -> Environment:
+        """Generate an Environment instance from the model.
+
+        Parameters
+        ----------
+        model : TomlSingleEnvironment
+            Model containing info to use to populate an Environment. The conda context
+            is used to populate any required fields of the Environment that don't have
+            corresponding fields in the model; any fields in the model will take
+            precedence over the corresponding fields from the conda context.
+
+        Returns
+        -------
+        Environment
+            Conda environment generated from the model
+        """
         return Environment(
             prefix=context.target_prefix,
             platform=context.subdir,
@@ -246,6 +319,20 @@ class TomlSpec(EnvironmentSpecBase):
 
     @staticmethod
     def _environment_to_model(env: Environment) -> TomlSingleEnvironment:
+        """Generate an TomlSingleEnvironment from an Environment.
+
+        Parameters
+        ----------
+        env : Environment
+            Environment to use to populate the model
+
+        Returns
+        -------
+        TomlSingleEnvironment
+            Model containing data from the Environment. Not all fields in the
+            model will be populated because there are no fields for e.g.
+            description, system_requirements, pypi_dependencies, etc
+        """
         return TomlSingleEnvironment.model_validate(
             {
                 "about": {
@@ -377,6 +464,7 @@ class EditablePackage(BaseModel):
     path: str
     editable: bool
 
+
 MatchSpecList = Annotated[
     list[MatchSpec | EditablePackage],
     BeforeValidator(validate_match_spec),
@@ -384,11 +472,11 @@ MatchSpecList = Annotated[
 ]
 
 PyPIDependencies = Annotated[
-    # list[PackageRecord | str | EditablePackage]
     list[str | EditablePackage],
     BeforeValidator(validate_pypi_dependencies),
     PlainSerializer(serialize_pypi_dependencies),
 ]
+
 
 class Platform(BaseModel):
     """A model which stores a list of dependencies for a platform."""

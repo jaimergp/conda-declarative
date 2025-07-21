@@ -40,7 +40,12 @@ def test_update_state(
     if remove_initial_declarative_env_file:
         state.get_manifest_path(python_flask_prefix).unlink()
 
-    with mock.patch("conda_declarative.state.dump") as mock_dump:
+    with (
+        mock.patch("conda_declarative.state.dump") as mock_dump,
+        mock.patch(
+            "conda_declarative.state.to_env_file", wraps=state.to_env_file
+        ) as mock_to_env_file,
+    ):
         state.update_state(
             prefix_type(python_flask_prefix),
             remove_specs=remove_specs,
@@ -63,9 +68,15 @@ def test_update_state(
             if spec.name in pkgs:
                 del pkgs[spec.name]
 
-    # The environment should have the expected packages
-    assert set(env_dict["requested_packages"]) == set(map(str, pkgs.values()))
+    # The environment file should have the expected packages. Need to construct MatchSpec
+    # objects from the set of dumped dependencies because MatchSpec can basically only match against
+    # PackageRecord objects, or other MatchSpec objects.
+    for expected_name, expected_spec in pkgs.items():
+        assert expected_spec.match(
+            MatchSpec(
+                name=expected_name, version=env_dict["dependencies"][expected_name]
+            )
+        )
 
-    # Internally the prefix should always be coerced to a string
-    assert isinstance(env_dict["prefix"], str)
-    assert env_dict["prefix"] == str(python_flask_prefix)
+    # Internally the prefix should match where flask is installed
+    assert str(mock_to_env_file.call_args.args[0]) == str(python_flask_prefix)

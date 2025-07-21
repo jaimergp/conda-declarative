@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 from typing import Any
 from unittest import mock
@@ -34,6 +35,10 @@ def python_prefix(tmp_env):
         assert requested == {"python": "*"}
         yield prefix
 
+        # Even though this is in a temp dir, we clean this up because /tmp is finite and
+        # will quickly fill up under repeated testing
+        shutil.rmtree(prefix)
+
 
 @pytest.fixture
 def python_flask_prefix(tmp_env):
@@ -55,6 +60,10 @@ def python_flask_prefix(tmp_env):
 
         assert set(requested) == set(["python", "flask"])
         yield prefix
+
+        # Even though this is in a temp dir, we clean this up because /tmp is finite and
+        # will quickly fill up under repeated testing
+        shutil.rmtree(prefix)
 
 
 @pytest.fixture
