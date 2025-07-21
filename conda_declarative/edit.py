@@ -41,7 +41,7 @@ from textual.widgets import (
 from . import app
 from .apply import apply, solve
 from .constants import CONDA_MANIFEST_FILE
-from .spec import TomlSpec
+from .spec import TomlSingleEnvironment, TomlSpec
 from .state import update_state
 from .util import set_conda_console
 
@@ -286,7 +286,12 @@ class EditApp(App):
             text = f.read()
 
         self.initial_text = text
-        self.editor = TextArea.code_editor(text=text, language="toml", id="editor")
+
+        try:
+            self.editor = TextArea.code_editor(text=text, language="toml", id="editor")
+        except Exception as e:
+            raise ValueError(f"Could not instantiate TUI with text:\n{text}") from e
+
         self.editor_label = Label()
         self.progress_bar_area = ProgressBars()
         self.spinner = SpinnerWidget(id="spinner")
@@ -449,14 +454,18 @@ class EditApp(App):
             await asyncio.sleep(debounce)
         try:
             self.set_status("reading toml")
-            environment = TomlSpec.dict_to_environment(loads(self.editor.text))
+            model: TomlSingleEnvironment = TomlSpec(loads(self.editor.text)).model
         except Exception as e:
+            with open('baz.txt', 'w') as f:
+                f.write(str(e))
+                f.write("\n\n")
+                f.write(type(e))
             self.notify(f"The current file is invalid TOML: {e}", severity="error")
             self.set_status("done")
             return
 
-        if environment.config is not None:
-            channels = environment.config.channels
+        if model.config is not None:
+            channels = model.config.channels
         else:
             channels = []
 
@@ -468,7 +477,7 @@ class EditApp(App):
                     prefix=self.prefix,
                     channels=channels,
                     subdirs=self.subdirs,
-                    specs=environment.requested_packages,
+                    specs=model.get_requested_packages(),
                 )
             except Exception as e:
                 # Disable markup styling here because conda exceptions include ANSI
@@ -483,7 +492,7 @@ class EditApp(App):
 
         self.current_solution = records
         self.render_table(
-            self.format_table_data(records, environment.requested_packages)
+            self.format_table_data(records, model.get_requested_packages())
         )
         self.set_status("done")
 
