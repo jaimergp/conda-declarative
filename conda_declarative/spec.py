@@ -80,7 +80,10 @@ def validate_pypi_dependencies(
                 # This is an editable local package
                 items.append(EditablePackage(name=name, **item))
             else:
-                raise ValueError
+                raise ValueError(
+                    f"Unsupported type ({type(item)}) encountered while "
+                    f"validating an item in pypi_dependencies: {str(item)}"
+                )
 
     return items
 
@@ -109,7 +112,10 @@ def serialize_pypi_dependencies(
         elif isinstance(spec, EditablePackage):
             items[spec.name] = spec.model_dump(exclude="name")
         else:
-            raise ValueError
+            raise ValueError(
+                f"Unsupported type ({type(spec)}) encountered while "
+                f"serializing an item in pypi_dependencies: {str(spec)}"
+            )
     return items
 
 
@@ -149,7 +155,10 @@ def validate_match_spec(
                 except ValidationError:
                     items.append(MatchSpec(name=name, **item))
             else:
-                raise ValueError
+                raise ValueError(
+                    f"Unsupported type ({type(item)}) encountered while validating "
+                    f"a match spec: {str(item)}"
+                )
     return items
 
 
@@ -173,7 +182,10 @@ def serialize_match_spec(specs: list[MatchSpec | EditablePackage]) -> dict[str, 
         elif isinstance(spec, EditablePackage):
             items[spec.name] = {"path": spec.path, "editable": spec.editable}
         else:
-            raise ValueError
+            raise ValueError(
+                f"Unsupported type ({type(spec)}) encountered while serializing "
+                f"a match spec: {str(spec)}"
+            )
     return items
 
 
@@ -278,7 +290,18 @@ class TomlSpec(EnvironmentSpecBase):
             self._environment = self._model_to_environment(self._model)
 
         elif isinstance(self._obj, dict):
-            self._model = TomlSingleEnvironment.model_validate(self._obj)
+            try:
+                self._model = TomlSingleEnvironment.model_validate(self._obj)
+            except ValidationError as e:
+                if "prefix" in self._obj:
+                    raise ValueError(
+                        "It looks like you are trying to pass a serialized "
+                        "conda.models.environment.Environment to instantiate a "
+                        "TomlSpec, but only serialized TomlSingleEnvironment "
+                        "dictionaries are supported."
+                    ) from e
+                raise
+
             self._environment = self._model_to_environment(self._model)
 
         elif isinstance(self._obj, Environment):
@@ -583,7 +606,10 @@ class TomlSingleEnvironment(TomlEnvironment):
             Validated data
         """
         if not (data.get("dependencies") or data.get("pypi_dependencies")):
-            raise ValueError
+            raise ValueError(
+                "Either `dependencies` or `pypi_dependencies` must be specified to "
+                "instantiate a model."
+            )
         return data
 
     def get_requested_packages(self, *args, **kwargs) -> list[MatchSpec]:  # noqa: ARG002

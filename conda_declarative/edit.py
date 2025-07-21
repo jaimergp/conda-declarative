@@ -290,7 +290,7 @@ class EditApp(App):
         try:
             self.editor = TextArea.code_editor(text=text, language="toml", id="editor")
         except Exception as e:
-            raise ValueError(f"Could not instantiate TUI with text:\n{text}") from e
+            raise ValueError(f"Could not instantiate TUI with text:\n{text}\n") from e
 
         self.editor_label = Label()
         self.progress_bar_area = ProgressBars()
@@ -456,11 +456,11 @@ class EditApp(App):
             self.set_status("reading toml")
             model: TomlSingleEnvironment = TomlSpec(loads(self.editor.text)).model
         except Exception as e:
-            with open('baz.txt', 'w') as f:
-                f.write(str(e))
-                f.write("\n\n")
-                f.write(type(e))
-            self.notify(f"The current file is invalid TOML: {e}", severity="error")
+            self.notify(
+                f"The current file is invalid TOML: {str(e)}",
+                severity="error",
+                markup=False,
+            )
             self.set_status("done")
             return
 
@@ -698,11 +698,13 @@ class EditApp(App):
             self.notify(
                 f"Exception while applying the environment: {repr(e)}.",
                 severity="error",
+                markup=False,
             )
         except Exception as e:
             self.notify(
                 f"Exception while applying the environment: {e}. Type: {type(e)}",
                 severity="error",
+                markup=False,
             )
 
         self.set_status("done")

@@ -185,3 +185,35 @@ def test_populate_from_toml(tmpdir, conda_cli, single_environment_path):
     for pkg in pip_requested:
         if pkg.name == "numpy":
             assert Version(pkg.version) >= Version("2")
+
+
+def test_bad_parse_environment_dict():
+    """Test that parsing a serialized Environment raises a special exception message."""
+    bad = {
+        "prefix": "/home/foo/.pixi/envs/default",
+        "platform": "linux-64",
+        "explicit_packages": [],
+        "name": "base",
+        "requested_packages": ["numpy", "matplotlib", "scipy"],
+        "virtual_packages": [],
+        "config": {
+            "aggressive_update_packages": ["ca-certificates", "certifi", "openssl"],
+            "channel_priority": "flexible",
+            "channels": ["defaults"],
+            "channel_settings": [],
+            "deps_modifier": "not_set",
+            "disallowed_packages": [],
+            "pinned_packages": [],
+            "repodata_fns": ["current_repodata.json", "repodata.json"],
+            "sat_solver": "pycosat",
+            "solver": "libmamba",
+            "track_features": [],
+            "update_modifier": "update_specs",
+            "use_only_tar_bz2": False,
+        },
+        "external_packages": {},
+        "variables": {},
+    }
+
+    with pytest.raises(ValueError, match="It looks like you"):
+        _ = spec.TomlSpec(bad).model
