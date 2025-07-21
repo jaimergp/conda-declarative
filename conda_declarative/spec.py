@@ -94,12 +94,12 @@ def serialize_pypi_dependencies(
     ----------
     specs : list[str | EditablePackage]
         Dependencies to be serialized. Each item must be a pip-compatible string,
-        ("scipy", "numpy>2"),
+        ("scipy", "numpy>2"), or an EditablePackage model.
 
     Returns
     -------
     dict[str, str | dict[str, str]]
-
+        Serialized model
 
     """
     items = {}
@@ -107,7 +107,7 @@ def serialize_pypi_dependencies(
         if isinstance(spec, str):
             items[spec] = spec
         elif isinstance(spec, EditablePackage):
-            items[spec.name] = {"path": spec.path, "editable": spec.editable}
+            items[spec.name] = spec.model_dump(exclude="name")
         else:
             raise ValueError
     return items
