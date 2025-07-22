@@ -50,6 +50,7 @@ boltons = ">=24.0.0,<25"
 rich = ">=14.0.0,<15"
 conda-spawn = "*" # not a requirement, but useful for local experimentation
 tree_sitter = "<25" # See https://github.com/Textualize/textual/issues/5976 for context
+pydantic = ">=2"
 
 [tool.pixi.pypi-dependencies]
 conda-declarative = { path  = ".", editable = true }
