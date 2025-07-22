@@ -4,6 +4,7 @@ from conda.core.prefix_data import PrefixData
 from conda.models.channel import Channel
 from conda.models.environment import Environment
 from conda.models.records import PrefixRecord
+from conda.plugins.prefix_data_loaders.pypi import load_site_packages
 from packaging.version import Version
 
 from conda_declarative import spec
@@ -147,6 +148,10 @@ def test_populate_from_toml(tmpdir, conda_cli, single_environment_path):
     assert specifier.environment_spec is spec.TomlSpec
 
     prefix_data = PrefixData(tmpdir, interoperability=True)
+
+    # Manually load site packages; conda prefix records don't appear to be made
+    # on their own for the pip-installed packages
+    load_site_packages(prefix_data.prefix_path, prefix_data._prefix_records)
     records = list(prefix_data.iter_records())
 
     # Before creating the environment, there should not be an environment
@@ -163,6 +168,9 @@ def test_populate_from_toml(tmpdir, conda_cli, single_environment_path):
         "--quiet",
     )
 
+    # Manually load site packages; conda prefix records don't appear to be made
+    # on their own for the pip-installed packages
+    load_site_packages(prefix_data.prefix_path, prefix_data._prefix_records)
     new_records = list(prefix_data.iter_records())
 
     # The prefix data should now point to a valid environment
