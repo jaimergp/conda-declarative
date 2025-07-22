@@ -29,8 +29,13 @@ def test_update_env(python_prefix, conda_cli):
     """Test that updating the env correctly writes to the declarative env file."""
     # Add flask to the environment; then check that it has been added
     # correctly to the declarative env file.
+    with open(state.get_manifest_path(python_prefix)) as f:
+        original_requested = loads(f.read())["dependencies"]
+
     conda_cli("install", f"--prefix={str(python_prefix)}", "flask", "--yes")
     with open(state.get_manifest_path(python_prefix)) as f:
-        requested = loads(f.read())["dependencies"]
+        new_requested = loads(f.read())["dependencies"]
 
-    assert sorted(requested) == sorted(["flask", "python"])
+    assert set(new_requested.items()) - set(original_requested.items()) == {
+        ("flask", "*")
+    }

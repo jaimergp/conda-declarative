@@ -32,7 +32,7 @@ def python_prefix(tmp_env):
 
         with open(state.get_manifest_path(prefix)) as f:
             requested = loads(f.read())["dependencies"]
-        assert requested == {"python": "*"}
+        assert requested["python"] == "*"
         yield prefix
 
         # Even though this is in a temp dir, we clean this up because /tmp is finite and
@@ -47,7 +47,8 @@ def python_flask_prefix(tmp_env):
     The context target prefix is also mocked to point to the temp prefix rather than
     whatever conda environment prefix the test is being run in.
 
-    Additionally, check that the declarative env file contains python and flask as well.
+    Additionally, check that the declarative env file contains (at least) python and
+    flask.
     """
     with (
         tmp_env("python", "flask") as prefix,
@@ -58,7 +59,7 @@ def python_flask_prefix(tmp_env):
         with open(state.get_manifest_path(prefix)) as f:
             requested = loads(f.read())["dependencies"]
 
-        assert set(requested) == set(["python", "flask"])
+        assert set(["python", "flask"]) <= set(requested)
         yield prefix
 
         # Even though this is in a temp dir, we clean this up because /tmp is finite and

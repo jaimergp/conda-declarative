@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import string
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 from copy import copy
 from dataclasses import fields
+from functools import total_ordering
 from pathlib import Path
 from pprint import pformat
 from textwrap import indent
@@ -18,6 +20,7 @@ except ImportError:
 from conda.base.context import context
 from conda.models.environment import Environment, EnvironmentConfig
 from conda.models.match_spec import MatchSpec
+from conda.models.records import PrefixRecord
 from conda.plugins.types import EnvironmentSpecBase
 from pydantic import (
     AnyHttpUrl,
@@ -26,101 +29,18 @@ from pydantic import (
     ConfigDict,
     EmailStr,
     PlainSerializer,
+    RootModel,
     ValidationError,
     ValidationInfo,
     field_validator,
+    model_serializer,
     model_validator,
 )
 
 
-def validate_pypi_dependencies(
-    value: list[str | EditablePackage] | dict[str, str | dict[str, str]],
-) -> list[str | EditablePackage]:
-    """Preprocess a set of raw pypi dependencies.
-
-    Parameters
-    ----------
-    value : list[str | EditablePackage] | dict[str, str | dict[str, str]]
-        A mapping between package names and either a version specifier, or
-        a dict of that indicates it is a local editable package, e.g.
-
-            conda-declarative = { path  = ".", editable = true }
-
-        Can also be a list of PyPI dependencies, in which case the list is
-        just passed through.
-
-    Returns
-    -------
-    list[str | EditablePackage]
-        A list of processed pypi dependencies
-    """
-    items = []
-    if isinstance(value, list):
-        items = value
-
-    else:
-        for name, item in value.items():
-            if isinstance(item, str):
-                if item == "*":
-                    # Install any version
-                    #
-                    #   example = "*"  # noqa: ERA001
-                    items.append(name)
-                elif item[0] in string.digits:
-                    # Install a specific version
-                    #
-                    #   example = "12.0"  # noqa: ERA001
-                    items.append(f"{name}=={item}")
-                else:
-                    # Some version constraint is specified
-                    #
-                    #   example = ">=2.28.0,<3"  # noqa: ERA001
-                    items.append(f"{name}{item}")
-            elif isinstance(item, dict):
-                # This is an editable local package
-                items.append(EditablePackage(name=name, **item))
-            else:
-                raise ValueError(
-                    f"Unsupported type ({type(item)}) encountered while "
-                    f"validating an item in pypi_dependencies: {str(item)}"
-                )
-
-    return items
-
-
-def serialize_pypi_dependencies(
-    specs: list[str | EditablePackage],
-) -> dict[str, str | dict[str, str]]:
-    """Serialize a list of pypi dependencies into a dict.
-
-    Parameters
-    ----------
-    specs : list[str | EditablePackage]
-        Dependencies to be serialized. Each item must be a pip-compatible string,
-        ("scipy", "numpy>2"), or an EditablePackage model.
-
-    Returns
-    -------
-    dict[str, str | dict[str, str]]
-        Serialized model
-
-    """
-    items = {}
-    for spec in specs:
-        if isinstance(spec, str):
-            items[spec] = spec
-        elif isinstance(spec, EditablePackage):
-            items[spec.name] = spec.model_dump(exclude="name")
-        else:
-            raise ValueError(
-                f"Unsupported type ({type(spec)}) encountered while "
-                f"serializing an item in pypi_dependencies: {str(spec)}"
-            )
-    return items
-
-
 def validate_match_spec(
-    value: list[MatchSpec] | dict[str, MatchSpec | str | dict[str, str]],
+    value: list[MatchSpec | EditablePackage]
+    | dict[str, MatchSpec | str | dict[str, str]],
 ) -> list[MatchSpec | EditablePackage]:
     """Preprocess a set of raw conda dependencies.
 
@@ -149,7 +69,7 @@ def validate_match_spec(
                 items.append(MatchSpec(name=name, version=item))
             elif isinstance(item, dict):
                 # This is a dict representation of a MatchSpec
-                # or an editable file
+                # or an editable package
                 try:
                     items.append(EditablePackage(name=name, **item))
                 except ValidationError:
@@ -159,7 +79,7 @@ def validate_match_spec(
                     f"Unsupported type ({type(item)}) encountered while validating "
                     f"a match spec: {str(item)}"
                 )
-    return items
+    return sorted(items, key=lambda x: x.name)
 
 
 def serialize_match_spec(specs: list[MatchSpec | EditablePackage]) -> dict[str, str]:
@@ -311,8 +231,7 @@ class TomlSpec(EnvironmentSpecBase):
         else:
             raise ValueError(f"Invalid parameter for TomlSpec: {self._obj}")
 
-    @staticmethod
-    def _model_to_environment(model: TomlSingleEnvironment) -> Environment:
+    def _model_to_environment(self, model: TomlSingleEnvironment) -> Environment:
         """Generate an Environment instance from the model.
 
         Parameters
@@ -331,7 +250,7 @@ class TomlSpec(EnvironmentSpecBase):
         return Environment(
             prefix=context.target_prefix,
             platform=context.subdir,
-            config=combine(
+            config=self._combine(
                 EnvironmentConfig.from_context(), model.config.get_environment_config()
             ),
             external_packages=model.get_external_packages(),
@@ -339,6 +258,36 @@ class TomlSpec(EnvironmentSpecBase):
             requested_packages=model.get_requested_packages(),
             variables=model.config.variables,
         )
+
+    @staticmethod
+    def _combine(*configs) -> EnvironmentConfig:
+        """Combine EnvironmentConfig objects into a single object.
+
+        Like `conda.models.environment.EnvironmentConfig.merge`, except fields
+        of configs on the right always clobber fields in configs on the left.
+
+        Parameters
+        ----------
+        *configs
+            Configuration objects to combine
+
+        Returns
+        -------
+        EnvironmentConfig
+            The combined EnvironmentConfig object
+        """
+        assert all(isinstance(config, EnvironmentConfig) for config in configs)
+
+        env_config = configs[0]
+        for config in configs[1:]:
+            for field in fields(config):
+                value = getattr(config, field.name)
+                if value is None:
+                    value = getattr(env_config, field.name)
+
+                setattr(env_config, field.name, value)
+
+        return env_config
 
     @staticmethod
     def _environment_to_model(env: Environment) -> TomlSingleEnvironment:
@@ -480,12 +429,24 @@ class Config(BaseModel):
         return EnvironmentConfig(channels=self.channels)
 
 
+@total_ordering
 class EditablePackage(BaseModel):
     """A model which store info about an editable package."""
 
     name: str
     path: str
     editable: bool
+
+    # Define comparison methods to allow sorting
+    def __gt__(self, other: Any) -> bool:  # noqa: ANN401
+        if isinstance(other, EditablePackage):
+            return self.root.name > other.name
+        return self.name > other
+
+    def __eq__(self, other: Any) -> bool:  # noqa: ANN401
+        if isinstance(other, EditablePackage):
+            return self.name == other.name
+        return self.name == other
 
 
 MatchSpecList = Annotated[
@@ -494,11 +455,150 @@ MatchSpecList = Annotated[
     PlainSerializer(serialize_match_spec),
 ]
 
-PyPIDependencies = Annotated[
-    list[str | EditablePackage],
-    BeforeValidator(validate_pypi_dependencies),
-    PlainSerializer(serialize_pypi_dependencies),
-]
+
+class PyPIDependencies(RootModel):
+    """A model which stores a list of PyPI dependencies."""
+
+    root: list[PyPIDependency]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_model(
+        cls,
+        value: PyPIDependencies | list[PrefixRecord] | dict[str, str | dict[str, str]],
+    ) -> PyPIDependencies:
+        """Preprocess a set of raw pypi dependencies.
+
+        Parameters
+        ----------
+        value : PyPIDependencies | dict[str, str | dict[str, str]]
+            A mapping between package names and either a version specifier, or
+            a dict of that indicates it is a local editable package, e.g.
+
+                conda-declarative = { path  = ".", editable = true }
+
+            Can also be a list of PyPI dependencies, in which case the list is
+            just passed through.
+
+        Returns
+        -------
+        PyPIDependencies
+            A list of processed pypi dependencies
+        """
+        items = []
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, PyPIDependency):
+                    items.append(value)
+                else:
+                    items.append(PyPIDependency.model_validate(item))
+
+        else:
+            for name, item in value.items():
+                items.append(PyPIDependency.model_validate((name, item)))
+
+        return sorted(items)
+
+    @model_serializer
+    def _serialize_model(self) -> dict[str, Any]:
+        """Serialize a list of pypi dependencies into a dict.
+
+        Returns
+        -------
+        dict[str, str | dict[str, str]]
+            Serialized model
+        """
+        items = {}
+        for dep in sorted(self):
+            items.update(dep.model_dump(exclude_unset=True))
+        return items
+
+    def __iter__(self) -> Iterable[PyPIDependency]:
+        yield from self.root
+
+    def to_pip(self) -> list[str]:
+        """Convert the dependencies to a pip-compatible format.
+
+        Returns
+        -------
+        list[str]
+            Format which can be passed to pip to install
+        """
+        return [dep.to_pip() for dep in self]
+
+
+@total_ordering
+class PyPIDependency(BaseModel):
+    """A model which stores a single PyPI dependency."""
+
+    name: str
+    version: str | None = None
+    path: str | None = None
+    editable: bool | None = None
+
+    @model_serializer
+    def _serialize_model(self) -> dict[str, str | dict[str, str]]:
+        if self.editable:
+            return {self.name: {"path": self.path, "editable": self.editable}}
+        return {self.name: self.version}
+
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_model(
+        cls, value: PrefixRecord | tuple[str, str | dict[str, str]]
+    ) -> dict[str, str]:
+        if isinstance(value, PrefixRecord):
+            name, obj = value.name, value.version
+        else:
+            name, obj = value
+
+        if isinstance(obj, str):
+            # The object is a MatchSpec-like string
+            return {"name": name, "version": obj}
+
+        if isinstance(obj, dict):
+            return {"name": name, **obj}
+
+        raise ValueError(
+            f"Unsupported type ({type(obj)}) encountered while "
+            f"validating a pypi dependency: {str(obj)}"
+        )
+
+    # Define comparison methods to allow sorting
+    def __gt__(self, other: Any) -> bool:  # noqa: ANN401
+        if isinstance(other, PyPIDependency):
+            return self.name > other.name
+        return self.name > other
+
+    def __eq__(self, other: Any) -> bool:  # noqa: ANN401
+        if isinstance(other, PyPIDependency):
+            return self.name == other.name
+        return self.name == other
+
+    def to_pip(self) -> str:
+        """Convert the dependency to a pip-compatible format.
+
+        Returns
+        -------
+        str
+            Format which can be passed to pip to install
+        """
+        if self.editable:
+            # e.g. the name _is a path_: ./path/to/directory
+            return f"{self.name}"
+
+        if self.version is None or self.version in ["*", ""]:
+            return f"{self.name}"
+
+        if self.version[0] in string.digits:
+            return f"{self.name}=={self.version}"
+
+        if self.version[0] in ["<", ">"]:
+            return f"{self.name}{self.version}"
+
+        raise ValueError(
+            f"Cannot convert PyPI dependency to pip format: {str(self.model_dump())}"
+        )
 
 
 class Platform(BaseModel):
@@ -588,30 +688,6 @@ class TomlSingleEnvironment(TomlEnvironment):
     platform: dict[str, Platform] = {}
     pypi_dependencies: PyPIDependencies = []
 
-    @model_validator(mode="before")
-    @classmethod
-    def _validate_urls(cls, data: dict[str, Any]) -> dict[str, Any]:
-        """Check that either `dependencies` or `pypi_dependencies` is not empty.
-
-        If both are empty, this may instead be a TomlMultiEnvironment.
-
-        Parameters
-        ----------
-        data : Any
-            A dict of {field names: field values}
-
-        Returns
-        -------
-        dict[str, Any]
-            Validated data
-        """
-        if not (data.get("dependencies") or data.get("pypi_dependencies")):
-            raise ValueError(
-                "Either `dependencies` or `pypi_dependencies` must be specified to "
-                "instantiate a model."
-            )
-        return data
-
     def get_requested_packages(self, *args, **kwargs) -> list[MatchSpec]:  # noqa: ARG002
         """Get the requested packages for the environment.
 
@@ -643,18 +719,7 @@ class TomlSingleEnvironment(TomlEnvironment):
 
             {'pip': [<some package names>, ...]}
         """
-        non_editable = []
-        for dep in self.pypi_dependencies:
-            if isinstance(dep, EditablePackage):
-                warn(
-                    "Editable packages are not supported PyPI dependencies. "
-                    f"Ignoring: {dep}",
-                    stacklevel=2,
-                )
-            else:
-                non_editable.append(dep)
-
-        return {"pip": non_editable}
+        return {"pip": self.pypi_dependencies.to_pip()}
 
 
 class Group(BaseModel):
@@ -754,33 +819,3 @@ class TomlMultiEnvironment(TomlEnvironment):
             )
 
         return envs
-
-
-def combine(*configs) -> EnvironmentConfig:
-    """Combine EnvironmentConfig objects into a single object.
-
-    Like `conda.models.environment.EnvironmentConfig.merge`, except fields
-    of configs on the right always clobber fields in configs on the left.
-
-    Parameters
-    ----------
-    *configs
-        Configuration objects to combine
-
-    Returns
-    -------
-    EnvironmentConfig
-        The combined EnvironmentConfig object
-    """
-    assert all(isinstance(config, EnvironmentConfig) for config in configs)
-
-    env_config = configs[0]
-    for config in configs[1:]:
-        for field in fields(config):
-            value = getattr(config, field.name)
-            if value is None:
-                value = getattr(env_config, field.name)
-
-            setattr(env_config, field.name, value)
-
-    return env_config

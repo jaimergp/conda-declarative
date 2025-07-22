@@ -9,7 +9,8 @@ except ImportError:
     from tomli import loads  # noqa: F401
 
 from conda.base.context import context
-from conda.history import History
+from conda.core.prefix_data import PrefixData
+from conda.models.channel import Channel
 from conda.models.match_spec import MatchSpec
 from tomli_w import dump
 
@@ -59,10 +60,12 @@ def update_state(
         pypi_dependencies = current_env.pypi_dependencies
     else:
         current_env = None
-        packages = {}
-        for pkg in History(prefix=str(prefix)).get_requested_specs_map().values():
-            packages[pkg.name] = pkg
-        pypi_dependencies = {}
+        packages, pypi_dependencies = {}, []
+        for record in PrefixData(str(prefix), interoperability=True).iter_records():
+            if record.channel == Channel("pypi"):
+                pypi_dependencies.append(record)
+            else:
+                packages[record.name] = record.to_simple_match_spec()
 
     # Explicitly remove any requested packages that are being removed
     packages.update({pkg.name: pkg for pkg in update_specs})
@@ -133,4 +136,4 @@ def to_env_file(prefix: str | pathlib.Path, model: TomlSingleEnvironment):
 
     """
     with open(get_manifest_path(prefix), "wb") as f:
-        dump(model.model_dump(), f)
+        dump(model.model_dump(exclude_unset=True), f)

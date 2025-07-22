@@ -278,7 +278,7 @@ class EditApp(App):
             update_state(self.prefix)
             self.notify(
                 f"No declarative environment file found at {self.filename}."
-                "Generating a new file from the environment history.",
+                "Generating a new file from the PrefixData for the environment.",
                 severity="warning",
             )
 
