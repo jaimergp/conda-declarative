@@ -13,6 +13,27 @@ Declarative workflows for conda environment handling.
 - `conda edit`: opens an editor to perform modifications on the active environment manifest file.
 - `conda apply`: renders the manifest file as a history checkpoint and links the solved packages to disk.
 
+### Manifest
+
+The manifest is a file that lives at `conda-meta/conda.toml`; its format follows
+a proposal for a TOML-based environment specification which is implemented using
+[environment specifier
+hooks](https://docs.conda.io/projects/conda/en/stable/dev-guide/plugins/environment_specifiers.html).
+
+Under the hood, the `TomlSpec` class provides the interface required of a valid
+environment specifier, and acts like a "translator", in that it allows TOML
+files, dictionaries of parsed environments, and
+`conda.models.environment.Environment` instances to be generated and converted
+between each of those formats. To do this the `TomlSpec` class employs a
+`TomlSingleEnvironment` Pydantic model which carries out serialization,
+deserialization, and validation.
+
+```
+┌────┐     ┌────┐     ┌─────────────────────┐     ┌────────┐     ┌───────────┐
+│TOML│◄───►│dict│◄───►│TomlSingleEnvironment│◄───►│TomlSpec│◄───►│Environment│◄───►conda
+└────┘     └────┘     └─────────────────────┘     └────────┘     └───────────┘
+```
+
 ## Installation
 
 This is a `conda` plugin and goes in the `base` environment:
