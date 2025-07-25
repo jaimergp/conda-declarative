@@ -496,33 +496,27 @@ class EditApp(App):
         )
         self.set_status("done")
 
-    def to_table(self, records: Iterable[PrefixRecord]) -> list[tuple[str, ...]]:
-        """Convert a list of prefix records into a list of tuples for the table.
+    def to_table_row(self, record: PrefixRecord) -> tuple[str, ...]:
+        """Convert a PrefixRecord to a row to be displayed in the table.
 
         Parameters
         ----------
-        records : Iterable[PrefixRecord]
-            Records which should be displayed in the table
+        record : PrefixRecord
+            Package record to display as a row
 
         Returns
         -------
-        list[tuple[str, ...]]
-            A list of rows for different packages; each row is a tuple containing
-            various information to display in the table
+        tuple[str, ...]
+            A row of data for the given record to display in the table
         """
-        rows = []
-        for record in records:
-            rows.append(
-                (
-                    "",  # Status column
-                    record.name,
-                    record.version,
-                    record.build,
-                    str(record.build_number),
-                    str(record.channel),
-                )
-            )
-        return rows
+        return (
+            "",  # Status column
+            record.name,
+            record.version,
+            record.build,
+            str(record.build_number),
+            str(record.channel),
+        )
 
     def format_table_data(
         self,
@@ -551,43 +545,32 @@ class EditApp(App):
             # If this is the first time running the solver, store the solved
             # records for comparison to future solves
             self.initial_solution = records
-            return self.to_table(records)
-
-        # Otherwise, compare the packages in the solution to the current
-        # set of packages
-        requested_rows, initial_rows, current_rows = set(), set(), set()
-
-        for record, row in zip(records, self.to_table(records)):
-            for spec in requested_specs:
-                if spec.match(record):
-                    requested_rows.add(row)
-                else:
-                    current_rows.add(row)
-
-        for record, row in zip(
-            self.initial_solution, self.to_table(self.initial_solution)
-        ):
-            for spec in requested_specs:
-                if spec.match(record):
-                    requested_rows.add(row)
-                else:
-                    initial_rows.add(row)
+            return [self.to_table_row(record) for record in records]
 
         rows = []
+        for record in records:
+            row = self.to_table_row(record)
+            if any(spec.match(record) for spec in requested_specs):
+                # If a record was explicitly requested, highlight it
+                rows.append(
+                    Text(col, style=REQUESTED_STYLE) for col in ("++>", *row[1:])
+                )
 
-        # Packages explicitly requested
-        for row in requested_rows:
-            rows.append(Text(col, style=REQUESTED_STYLE) for col in ("++>", *row[1:]))
+            elif record in self.initial_solution:
+                # If a record is unchanged and not requested, no special highlight
+                rows.append(row)
 
-        # Packages to be added
-        for row in current_rows - initial_rows:
-            rows.append(Text(col, style=ADDED_STYLE) for col in ("+  ", *row[1:]))
+            else:
+                # Otherwise, it is a record that was added as a transitive dependency
+                rows.append(Text(col, style=ADDED_STYLE) for col in ("+  ", *row[1:]))
 
-        # Packages to be removed
-        for row in initial_rows - current_rows:
-            rows.append(Text(col, style=REMOVED_STYLE) for col in ("-  ", *row[1:]))
+        # If a record in the initial solution doesn't exist anymore, highlight it as
+        # removed
+        for record in self.initial_solution:
+            row = self.to_table_row(record)
+            if record not in records:
+                rows.append(Text(col, style=REMOVED_STYLE) for col in ("-  ", *row[1:]))
 
-        rows.extend(current_rows & initial_rows)
         return rows
 
     def compose(self) -> Generator[ComposeResult, None, None]:
