@@ -39,7 +39,7 @@ from pydantic import (
 
 
 def validate_match_spec(
-    value: list[MatchSpec | EditablePackage]
+    value: Iterable[MatchSpec | EditablePackage]
     | dict[str, MatchSpec | str | dict[str, str]],
 ) -> list[MatchSpec | EditablePackage]:
     """Preprocess a set of raw conda dependencies.
