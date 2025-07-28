@@ -1,0 +1,54 @@
+version = 1
+
+[about]  # static metadata, shouldn't change too much
+name = "workspace-name"
+revision = ""
+description = "Free text, supporting markdown"
+authors = []
+license = ""  # SPDX expression
+license-files = [] # PEP 639 style
+
+[about.urls]
+
+[config] # maps to Environment.config, also `conda config`
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-arm64", "win-64"]
+
+[system-requirements]
+# pre-requisite before the solver even runs!
+# these are the lower bounds for the equivalent virtual packages
+libc = "2.17"  # equivalent to CONDA_OVERRIDE_GLIBC=2.17
+
+###
+# Instead of 'features' we have 'groups', similar to PEP 735
+[groups.main]
+description = "The baseline group"  # NEW: define purpose of group (optional)
+
+[groups.main.config.variables]
+SOME = "VARIABLE"
+
+[groups.main.dependencies]
+python = ">=3.10"  # We keep key:value instead a str "python>=3.10".
+
+[groups.main.platform.win-64.dependencies]
+pywin32 = "*"
+
+[groups.main.pypi-dependencies]
+example = "*"
+
+[groups.gpu]
+description = "This is for GPU enabled workflows"
+
+[groups.gpu.config]
+platforms = ["linux-64"]  # GPU only available on Linux
+
+[groups.gpu.system-requirements]
+cuda = "12.0"
+
+[groups.gpu.dependencies]
+cuda = ">=12.0"
+
+[environments]
+# Note: We don't have implicit default! This avoids the ugly 'no-default-feature = true'
+default = ["main"]  # Warn if not 'default' environment present
+gpu = ["main", "gpu"]

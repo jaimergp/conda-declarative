@@ -1,3 +1,6 @@
+import shutil
+from pathlib import Path
+from typing import Any
 from unittest import mock
 
 import pytest
@@ -27,10 +30,14 @@ def python_prefix(tmp_env):
     ):
         mock_target_prefix.return_value = str(prefix)
 
-        with open(state.get_env_path(prefix)) as f:
-            requested = loads(f.read())["requested_packages"]
-        assert requested == ["python"]
+        with open(state.get_manifest_path(prefix)) as f:
+            requested = loads(f.read())["dependencies"]
+        assert requested["python"] == "*"
         yield prefix
+
+        # Even though this is in a temp dir, we clean this up because /tmp is finite and
+        # will quickly fill up under repeated testing
+        shutil.rmtree(prefix)
 
 
 @pytest.fixture
@@ -40,7 +47,8 @@ def python_flask_prefix(tmp_env):
     The context target prefix is also mocked to point to the temp prefix rather than
     whatever conda environment prefix the test is being run in.
 
-    Additionally, check that the declarative env file contains python and flask as well.
+    Additionally, check that the declarative env file contains (at least) python and
+    flask.
     """
     with (
         tmp_env("python", "flask") as prefix,
@@ -48,8 +56,87 @@ def python_flask_prefix(tmp_env):
     ):
         mock_target_prefix.return_value = str(prefix)
 
-        with open(state.get_env_path(prefix)) as f:
-            requested = loads(f.read())["requested_packages"]
+        with open(state.get_manifest_path(prefix)) as f:
+            requested = loads(f.read())["dependencies"]
 
-        assert set(requested) == set(["python", "flask"])
+        assert set(["python", "flask"]) <= set(requested)
         yield prefix
+
+        # Even though this is in a temp dir, we clean this up because /tmp is finite and
+        # will quickly fill up under repeated testing
+        shutil.rmtree(prefix)
+
+
+@pytest.fixture
+def single_environment_path() -> Path:
+    """Return the path to a single environment toml file.
+
+    Returns
+    -------
+    Path
+        The toml environment file path
+    """
+    return Path(__file__).parent / "assets" / "single_environment.toml"
+
+
+@pytest.fixture
+def multi_environment_path() -> Path:
+    """Return the path to a multi environment toml file.
+
+    Returns
+    -------
+    Path
+        The toml environment file path
+    """
+    return Path(__file__).parent / "assets" / "multi_environment.toml"
+
+
+@pytest.fixture
+def multi_environment_path2() -> Path:
+    """Return the path to a multi environment toml file.
+
+    Returns
+    -------
+    Path
+        The toml environment file path
+    """
+    return Path(__file__).parent / "assets" / "multi_environment2.toml"
+
+
+@pytest.fixture
+def single_environment_dict(single_environment_path) -> dict[str, Any]:
+    """Return a single environment toml file, parsed into a dict.
+
+    Returns
+    -------
+    dict[str, Any]
+        The toml environment file, parsed into a dict
+    """
+    with open(single_environment_path) as f:
+        return loads(f.read())
+
+
+@pytest.fixture
+def multi_environment_dict(multi_environment_path) -> dict[str, Any]:
+    """Return a multi environment toml file, parsed into a dict.
+
+    Returns
+    -------
+    dict[str, Any]
+        The toml environment file, parsed into a dict
+    """
+    with open(multi_environment_path) as f:
+        return loads(f.read())
+
+
+@pytest.fixture
+def multi_environment_dict2(multi_environment_path2) -> dict[str, Any]:
+    """Return another multi environment toml file, parsed into a dict.
+
+    Returns
+    -------
+    dict[str, Any]
+        The toml environment file, parsed into a dict
+    """
+    with open(multi_environment_path2) as f:
+        return loads(f.read())

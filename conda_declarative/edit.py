@@ -41,7 +41,8 @@ from textual.widgets import (
 from . import app
 from .apply import apply, solve
 from .constants import CONDA_MANIFEST_FILE
-from .state import dict_to_env, update_state
+from .spec import TomlSingleEnvironment, TomlSpec
+from .state import update_state
 from .util import set_conda_console
 
 if TYPE_CHECKING:
@@ -277,7 +278,7 @@ class EditApp(App):
             update_state(self.prefix)
             self.notify(
                 f"No declarative environment file found at {self.filename}."
-                "Generating a new file from the environment history.",
+                "Generating a new file from the PrefixData for the environment.",
                 severity="warning",
             )
 
@@ -285,7 +286,12 @@ class EditApp(App):
             text = f.read()
 
         self.initial_text = text
-        self.editor = TextArea.code_editor(text=text, language="toml", id="editor")
+
+        try:
+            self.editor = TextArea.code_editor(text=text, language="toml", id="editor")
+        except Exception as e:
+            raise ValueError(f"Could not instantiate TUI with text:\n{text}\n") from e
+
         self.editor_label = Label()
         self.progress_bar_area = ProgressBars()
         self.spinner = SpinnerWidget(id="spinner")
@@ -448,15 +454,18 @@ class EditApp(App):
             await asyncio.sleep(debounce)
         try:
             self.set_status("reading toml")
-            manifest = await asyncio.to_thread(loads, self.editor.text)
-            environment = dict_to_env(manifest)
+            model: TomlSingleEnvironment = TomlSpec(loads(self.editor.text)).model
         except Exception as e:
-            self.notify(f"The current file is invalid TOML: {e}", severity="error")
+            self.notify(
+                f"The current file is invalid TOML: {str(e)}",
+                severity="error",
+                markup=False,
+            )
             self.set_status("done")
             return
 
-        if environment.config is not None:
-            channels = environment.config.channels
+        if model.config is not None:
+            channels = model.config.channels
         else:
             channels = []
 
@@ -468,7 +477,7 @@ class EditApp(App):
                     prefix=self.prefix,
                     channels=channels,
                     subdirs=self.subdirs,
-                    specs=environment.requested_packages,
+                    specs=model.get_requested_packages(),
                 )
             except Exception as e:
                 # Disable markup styling here because conda exceptions include ANSI
@@ -483,7 +492,7 @@ class EditApp(App):
 
         self.current_solution = records
         self.render_table(
-            self.format_table_data(records, environment.requested_packages)
+            self.format_table_data(records, model.get_requested_packages())
         )
         self.set_status("done")
 
@@ -672,11 +681,13 @@ class EditApp(App):
             self.notify(
                 f"Exception while applying the environment: {repr(e)}.",
                 severity="error",
+                markup=False,
             )
         except Exception as e:
             self.notify(
                 f"Exception while applying the environment: {e}. Type: {type(e)}",
                 severity="error",
+                markup=False,
             )
 
         self.set_status("done")
