@@ -51,13 +51,27 @@ deserialization, and validation.
   current approach looks at the packages that are already installed in the
   environment. Because there's no way to know which of them were explicitly
   requested by the user, or whether any version constraints were requested when
-  they were installed, _all_ of them are currently added to the `req`
+  they were installed, _all_ of them are currently added to the `dependencies`
+  with the currently installed version.
+
+  This makes it really hard to add new packages (because the version constraints
+  are likely too tight to solve), and likely doesn't match the intent of the
+  user.
+
+  An alternative approach is to use `conda-meta/history` to populate
+  `conda.toml` with the user-requested packages; but this doesn't work if the
+  environment isn't managed by `conda`, as is the case for the development
+  environments used in this project (`pixi` doesn't write to
+  `conda-meta/history`).
+
+- Package removal doesn't work yet. The main focus so far has been on the TUI
+  and the spec.
 
 ## Installation
 
 This is a `conda` plugin and goes in the `base` environment:
 
-```bash conda install -n base conda-forge::conda-declarative ```
+```bash conda install -n base conda-forge::conda-declarative```
 
 More information is available on our
 [documentation](https://conda-incubator.github.io/conda-declarative).
