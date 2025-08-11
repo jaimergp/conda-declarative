@@ -1,3 +1,5 @@
+"""Assorted utilities for conda-declarative."""
+
 from __future__ import annotations
 
 from argparse import Namespace

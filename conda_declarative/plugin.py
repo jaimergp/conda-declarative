@@ -1,3 +1,13 @@
+"""Plugin implementations for conda-declarative functionality.
+
+Includes:
+- Conda subcommand hooks for adding the `conda edit` and `conda apply` commands
+- A post-transaction action hook for updating `conda.toml` when the user installs,
+  updates, or removes packages
+- A reporter backend hook for redirecting progress info from conda to the TUI
+- An environment specifier hook for using `conda.toml` to specify conda environments
+"""
+
 from __future__ import annotations
 
 from collections.abc import Iterable

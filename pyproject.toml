@@ -173,7 +173,6 @@ ignore = [
     "ANN201", # Missing return type annotation for public function (makes no sense for NoneType return types...)
     "ANN204", # Missing return type annotation for special method
     "B905", # zip() without an explicit strict=; incompatible with python<3.12
-    "D100", # Missing docstring in public module
     "D104", # Missing docstring in public package
     "D105", # Missing docstring in magic method
     "D107", # Missing docstring in __init__
@@ -193,6 +192,8 @@ ignore = [
 "__init__.py" = ["F401"]
 "test_*.py" = ["ANN001"]
 "conftest.py" = ["ANN001"]
+"docs/*.py" = ["D100"]
+"tests/*.py" = ["D100"]
 
 [dependency-groups]
 test = ["packaging"]
