@@ -71,7 +71,7 @@ deserialization, and validation.
 
 This is a `conda` plugin and goes in the `base` environment:
 
-```bash 
+```bash
 conda install -n base conda-forge::conda-declarative
 ```
 
