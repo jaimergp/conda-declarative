@@ -1,3 +1,10 @@
+"""Renderers which pass conda progress information to the TUI.
+
+The TuiReporterRenderer instantiates TuiProgressBar and TuiSpinner instances, both
+of which pass their respective status information to the global `conda_declarative.app`
+singleton instance. The app in turn updates the UI.
+"""
+
 from __future__ import annotations  # noqa: I001
 
 from uuid import uuid4

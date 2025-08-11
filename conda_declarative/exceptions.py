@@ -1,3 +1,5 @@
+"""Exception classes for conda-declarative."""
+
 from conda.exceptions import CondaExitZero
 
 

@@ -1,3 +1,11 @@
+"""Implementation of the TOML specification for conda environments.
+
+The main object of interest is the `TomlSpec` class, which implements conda's
+environment specification. It does this with the help of the TomlSingleEnvironment
+pydantic model, which it uses for serializing and deserializing environment and
+environment configuration data. See the docstring for `TomlSpec` for more information.
+"""
+
 from __future__ import annotations
 
 import string
